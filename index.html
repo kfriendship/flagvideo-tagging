@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>플래그풋볼 영상 태깅 (유튜브)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E8ECF0; --surface:#FFFFFF; --sunk:#F3F5F8; --ink:#17202B; --muted:#5B6676; --line:#CBD3DC;
+  --sit:#2F6FD0; --off:#2B8A57; --def:#D07A22; --res:#B58A12;
+  --flag:#F2C230; --flag-ink:#1F1A05; --danger:#C2412F; --focus:#2F6FD0;
+  color-scheme:light;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#10151B; --surface:#19212A; --sunk:#131A21; --ink:#E5EAF0; --muted:#97A3B3; --line:#2C3743;
+  --sit:#6FA0EC; --off:#5DBE88; --def:#EDA35A; --res:#E3BE4C; --flag:#F2C230; --flag-ink:#1F1A05; --danger:#EE7765; --focus:#6FA0EC;
+  color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#10151B; --surface:#19212A; --sunk:#131A21; --ink:#E5EAF0; --muted:#97A3B3; --line:#2C3743;
+  --sit:#6FA0EC; --off:#5DBE88; --def:#EDA35A; --res:#E3BE4C; --flag:#F2C230; --flag-ink:#1F1A05; --danger:#EE7765; --focus:#6FA0EC;
+  color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%; scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0; min-height:100%; background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif; font-size:14px; line-height:1.45}
+button,input,textarea{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
+.app{max-width:1440px; margin:0 auto; padding:12px; display:grid; gap:12px;
+  grid-template-columns:minmax(0,1.55fr) minmax(320px,1fr); grid-template-areas:"top top" "video labels" "plays labels"}
+@media (max-width:900px){ .app{grid-template-columns:minmax(0,1fr); grid-template-areas:"top" "video" "labels" "plays"} }
+.top{grid-area:top; display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.top h1{font-size:17px; font-weight:700; margin:0 8px 0 0; letter-spacing:-0.01em}
+.field{display:flex; align-items:center; gap:6px; background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:4px 8px}
+.field label{color:var(--muted); font-size:12px}
+.field input{border:0; background:transparent; width:96px; padding:3px 0}
+.field input:focus{outline:none}
+.spacer{flex:1}
+.btn{border:1px solid var(--line); background:var(--surface); border-radius:8px; padding:7px 12px; cursor:pointer; white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.btn.warn{color:var(--danger); border-color:var(--danger)}
+.btn:disabled{opacity:.45; cursor:default}
+.swap{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--surface)}
+.swap button{border:0; background:transparent; padding:6px 10px; cursor:pointer; color:var(--muted)}
+.swap button.on{background:var(--ink); color:var(--bg)}
+
+.video{grid-area:video; background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.stage{position:relative; background:#000; aspect-ratio:16/9; display:grid; place-items:center}
+.stage #yt,.stage iframe{position:absolute; inset:0; width:100%; height:100%; border:0}
+.shield{position:absolute; inset:0; cursor:pointer}
+.stage.mono #yt,.stage.mono iframe{filter:grayscale(1) contrast(1.15)}
+.shield.off{display:none}
+.urlbar{display:flex; gap:8px; padding:10px 12px}
+.urlbar input{flex:1; min-width:0; border:1px solid var(--line); border-radius:8px; background:var(--sunk); padding:7px 10px}
+.range{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:0 12px 10px; border-bottom:1px solid var(--line); font-size:13px; color:var(--muted)}
+.range input{width:84px; border:1px solid var(--line); border-radius:6px; background:var(--sunk); padding:5px 8px; font-variant-numeric:tabular-nums}
+.range .btn{padding:4px 9px; font-size:12px}
+.status{display:flex; gap:8px; align-items:flex-start; padding:0 12px 10px; font-size:13px}
+.status .dot{width:9px; height:9px; border-radius:50%; margin-top:5px; flex:none; background:var(--muted)}
+.status[data-s="busy"] .dot{background:var(--flag); animation:blink 1s infinite}
+.status[data-s="ok"] .dot{background:var(--off)}
+.status[data-s="err"] .dot{background:var(--danger)}
+.status[data-s="err"] .msg{color:var(--danger)}
+.status .sub{color:var(--muted); font-size:12px}
+@keyframes blink{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){ .status .dot{animation:none} }
+.ytlink{color:var(--muted); text-decoration:none; font-size:12px}
+.ytlink:hover{color:var(--ink)}
+.drop{position:absolute; inset:0; display:grid; place-items:center; text-align:center; color:#C9D2DC; padding:24px; cursor:pointer}
+.drop strong{display:block; font-size:16px; color:#fff; margin-bottom:4px}
+.drop.hidden{display:none}
+.stage.dragging{outline:3px dashed var(--flag); outline-offset:-10px}
+.controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 12px; border-top:1px solid var(--line)}
+.time{font-variant-numeric:tabular-nums; min-width:110px}
+.scrub{flex:1 1 200px; accent-color:var(--ink)}
+.snap{background:var(--flag); color:var(--flag-ink); border:0; border-radius:8px; padding:8px 16px; font-weight:700; cursor:pointer;
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.snap:active{transform:translateY(1px)}
+.snap:disabled{opacity:.45; cursor:default}
+.keys{padding:8px 12px 12px; color:var(--muted); font-size:12px; display:flex; flex-wrap:wrap; gap:4px 14px}
+kbd{font-family:inherit; font-size:11px; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 5px; background:var(--sunk); color:var(--ink)}
+
+.labels{grid-area:labels; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:12px; align-self:start;
+  position:sticky; top:calc(env(safe-area-inset-top,0px) + 12px); max-height:calc(100vh - 24px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)); overflow:auto}
+@media (max-width:900px){ .labels{position:static; max-height:none} }
+.lhead{display:flex; align-items:baseline; gap:8px; margin-bottom:8px}
+.lhead h2{font-size:15px; margin:0}
+.lhead .meta{color:var(--muted); font-size:12px}
+.empty{color:var(--muted); padding:28px 8px; text-align:center}
+.group{border-left:4px solid var(--g); padding:2px 0 2px 10px; margin:12px 0}
+.group h3{font-size:12px; color:var(--g); margin:0 0 4px; font-weight:700}
+.cat{padding:5px 6px; border-radius:8px; margin:0 -6px}
+.cat.active{background:var(--sunk); box-shadow:inset 0 0 0 1px var(--line)}
+.cat .name{font-size:12px; color:var(--muted); margin-bottom:3px; display:flex; gap:6px; align-items:center}
+.cat.active .name{color:var(--ink); font-weight:600}
+.chips{display:flex; flex-wrap:wrap; gap:5px}
+.chip{border:1px solid var(--line); background:var(--surface); border-radius:6px; padding:4px 9px; cursor:pointer; font-size:13px; position:relative}
+.chip .k{font-size:10px; color:var(--muted); margin-right:4px; display:none}
+.cat.active .chip .k{display:inline}
+.chip.unk{border-style:dashed; color:var(--muted)}
+.chip.on{border-color:var(--g); background:color-mix(in srgb, var(--g) 16%, var(--surface)); color:var(--ink); font-weight:600}
+.chip.on::before{content:""; position:absolute; left:-1px; top:-1px; bottom:-1px; width:4px; background:var(--g); border-radius:6px 0 0 6px}
+.nums{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px}
+.nums label{font-size:12px; color:var(--muted); display:grid; gap:3px}
+.nums input,.memo textarea{border:1px solid var(--line); border-radius:6px; background:var(--sunk); padding:6px 8px; width:100%}
+.memo{margin-top:8px}
+.memo label{font-size:12px; color:var(--muted); display:grid; gap:3px}
+.memo textarea{min-height:44px; resize:vertical}
+
+.plays{grid-area:plays; background:var(--surface); border:1px solid var(--line); border-radius:10px; overflow:hidden}
+.phead{display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--line)}
+.phead h2{font-size:15px; margin:0}
+.phead .meta{color:var(--muted); font-size:12px}
+.list{max-height:420px; overflow:auto}
+.row{display:grid; grid-template-columns:34px 64px minmax(0,1fr) 50px 28px; gap:10px; align-items:center; padding:6px 12px; border-bottom:1px solid var(--line); cursor:pointer}
+.row:hover{background:var(--sunk)}
+.row.sel{background:color-mix(in srgb, var(--flag) 18%, var(--surface))}
+.row img,.row .ph{width:72px; height:40px; object-fit:cover; border-radius:4px; background:var(--sunk); display:block}
+.row .n{font-weight:700; font-variant-numeric:tabular-nums}
+.row .t{font-variant-numeric:tabular-nums; color:var(--muted); font-size:12px}
+.row .s{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.row .s small{color:var(--muted)}
+.row .p{font-size:12px; font-variant-numeric:tabular-nums; color:var(--muted); text-align:right}
+.row .p.done{color:var(--off); font-weight:600}
+.del{border:0; background:transparent; color:var(--muted); cursor:pointer; font-size:16px; line-height:1}
+.del:hover{color:var(--danger)}
+.ai{border-top:1px solid var(--line); margin-top:14px; padding-top:12px}
+.ai h3{font-size:13px; margin:0 0 8px; display:flex; align-items:center; gap:8px}
+.ai .bar{display:flex; flex-wrap:wrap; gap:6px; align-items:center}
+.ai .run{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.ai .stl{font-size:12px; color:var(--muted); margin:6px 0}
+.ai .stl.err{color:var(--danger)}
+.ai table{width:100%; border-collapse:collapse; font-size:13px; margin-top:6px}
+.ai th{font-size:11px; color:var(--muted); text-align:left; font-weight:500; padding:3px 4px; border-bottom:1px solid var(--line)}
+.ai td{padding:4px; border-bottom:1px solid var(--line); vertical-align:middle}
+.ai select{font:inherit; font-size:12px; border:1px solid var(--line); border-radius:6px; background:var(--sunk); color:var(--ink); padding:3px 4px; max-width:100%}
+.ai .conf{font-size:11px; color:var(--muted)}
+.ai .sug{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0}
+.ai .sug span{font-size:12px; border:1px dashed var(--line); border-radius:6px; padding:3px 8px}
+.ai .sug button{border:0; background:transparent; color:var(--sit); cursor:pointer; font-size:12px; padding:0 0 0 4px}
+.ai .notes{font-size:12px; color:var(--muted); margin-top:6px}
+.strip{display:flex; gap:3px; overflow-x:auto; margin-top:8px; padding-bottom:4px}
+.strip img{height:44px; border-radius:3px; flex:none}
+.settings{position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; place-items:center; padding:16px; z-index:20}
+.settings.open{display:grid}
+.settings .card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:18px; width:min(460px,100%); display:grid; gap:12px}
+.settings h2{margin:0; font-size:16px}
+.settings label{display:grid; gap:4px; font-size:12px; color:var(--muted)}
+.settings input,.settings select{font:inherit; color:var(--ink); border:1px solid var(--line); border-radius:8px; background:var(--sunk); padding:8px 10px}
+.settings p{margin:0; font-size:12px; color:var(--muted)}
+.settings .row2{display:flex; gap:8px; justify-content:flex-end}
+.card.rep{width:min(860px,100%); max-height:calc(100vh - 32px); overflow:auto}
+.rephead{display:flex; gap:8px; align-items:center}
+.repfilter{display:flex; flex-wrap:wrap; gap:8px}
+.repgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px}
+.metric{border:1px solid var(--line); border-radius:10px; padding:12px; background:var(--sunk)}
+.metric h4{margin:0 0 2px; font-size:13px}
+.metric .q{font-size:11px; color:var(--muted); margin-bottom:8px}
+.metric .big{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; margin-bottom:6px}
+.metric .big small{font-size:12px; font-weight:400; color:var(--muted); margin-left:6px}
+.bars{display:grid; gap:5px}
+.bar1{display:grid; grid-template-columns:78px 1fr 64px; gap:8px; align-items:center; font-size:12px}
+.bar1 .tr{height:10px; border-radius:5px; background:var(--line); overflow:hidden}
+.bar1 .fl{height:100%; background:var(--res); border-radius:5px}
+.bar1 .v{text-align:right; font-variant-numeric:tabular-nums; color:var(--muted)}
+.bar1.top .fl{background:var(--flag)}
+.metric .note{font-size:11px; color:var(--muted); margin-top:6px}
+.repsum{font-size:13px; line-height:1.6; border-left:4px solid var(--flag); padding:4px 0 4px 10px}
+.toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--ink); color:var(--bg);
+  padding:8px 14px; border-radius:8px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){ .toast{transition:none} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>플래그풋볼 영상 태깅</h1>
+    <div class="field"><label for="gid">경기 ID</label><input id="gid" value="G01"></div>
+    <div class="field"><label for="teamA">팀 A</label><input id="teamA" value="팀A"></div>
+    <div class="field"><label for="teamB">팀 B</label><input id="teamB" value="팀B"></div>
+    <div class="swap" role="group" aria-label="공격팀">
+      <button id="offA" class="on">A 공격</button><button id="offB">B 공격</button>
+    </div>
+    <span class="spacer"></span>
+    <button class="btn" id="aiSetBtn">AI 설정</button>
+  </header>
+
+  <section class="video" aria-label="영상">
+    <form class="urlbar" id="urlForm"><input id="url" placeholder="유튜브 링크를 붙여넣으세요 (youtube.com/watch?v=… 또는 youtu.be/…)" aria-label="유튜브 링크"><button class="btn primary">열기</button></form>
+    <div class="status" id="status" role="status" aria-live="polite" data-s="idle"><span class="dot"></span><div><div class="msg" id="stMsg">대기 중</div><div class="sub" id="stSub"></div></div></div>
+    <div class="range" role="group" aria-label="분석 구간">
+      <span>분석 구간</span>
+      <input id="rs" placeholder="0:00" aria-label="구간 시작"><button class="btn" type="button" id="rsNow">지금 위치</button>
+      <span>부터</span>
+      <input id="re" placeholder="끝까지" aria-label="구간 끝"><button class="btn" type="button" id="reNow">지금 위치</button>
+      <span>까지</span>
+      <button class="btn" type="button" id="rangeApply">적용</button>
+      <span id="rangeInfo"></span>
+    </div>
+    <div class="stage" id="stage">
+      <div id="yt"></div>
+      <div class="shield off" id="shield" title="클릭하면 재생/정지"></div>
+      <div class="drop" id="drop"><div><strong>위에 유튜브 링크를 붙여넣고 열기를 누르세요</strong>공개 영상만 열 수 있어요</div></div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="playBtn" disabled>재생</button>
+      <span class="time" id="time">0:00 / 0:00</span>
+      <input class="scrub" id="scrub" type="range" min="0" max="0" step="0.01" value="0" disabled aria-label="재생 위치">
+      <button class="btn" id="rateBtn" disabled>1x</button>
+      <button class="btn" id="ctlBtn" disabled>유튜브 컨트롤</button>
+      <button class="btn" id="monoBtn" aria-pressed="false">흑백 (B)</button>
+      <button class="snap" id="snapBtn" disabled>스냅 지정 (S)</button>
+    </div>
+    <div class="keys">
+      <span><kbd>Space</kbd> 재생/정지</span><span><kbd>←</kbd><kbd>→</kbd> 1초</span><span><kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 5초</span>
+      <span><kbd>,</kbd><kbd>.</kbd> 1프레임</span><span><kbd>[</kbd><kbd>]</kbd> 속도</span><span><kbd>S</kbd> 스냅</span><span><kbd>T</kbd> 공격팀 전환</span><span><kbd>B</kbd> 흑백</span><span><kbd>A</kbd> AI 루트 분석</span>
+      <span><kbd>↑</kbd><kbd>↓</kbd> 항목 이동</span><span><kbd>1</kbd>–<kbd>8</kbd> 값 선택</span><span><kbd>G</kbd> 선택한 플레이로 이동</span>
+    </div>
+  </section>
+
+  <aside class="labels" id="labels" aria-label="라벨"></aside>
+
+  <section class="plays" aria-label="플레이 목록">
+    <div class="phead">
+      <h2>플레이</h2><span class="meta" id="pmeta">0개</span>
+      <span class="spacer"></span>
+      <button class="btn" id="repBtn">스카우팅 리포트</button>
+      <button class="btn primary" id="copyBtn">시트에 붙여넣기용 복사</button>
+      <button class="btn" id="csvBtn">CSV 저장</button>
+      <button class="btn" id="bakBtn">백업 저장</button>
+      <button class="btn" id="resBtn">백업 불러오기</button><input type="file" id="resFile" accept=".json,application/json" hidden>
+      <button class="btn warn" id="resetBtn">새 경기</button>
+    </div>
+    <div class="list" id="list"></div>
+  </section>
+</div>
+<div class="settings" id="settings" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+  <div class="card">
+    <h2 id="setTitle">AI 설정</h2>
+    <label>Claude API 키<input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
+    <label>모델<select id="model"><option value="claude-sonnet-5-5">Claude Sonnet 5.5 (기본)</option><option value="claude-opus-5-5">Claude Opus 5.5 (더 정확, 더 비쌈)</option><option value="claude-haiku-5-5">Claude Haiku 5.5 (빠르고 저렴)</option></select></label>
+    <label>캡처 간격<select id="fps"><option value="0.25">0.25초 (플레이당 약 24장)</option><option value="0.2">0.2초 (약 30장)</option><option value="0.33">0.33초 (약 18장)</option></select></label>
+    <p>키는 이 PC의 이 브라우저에만 저장되고, Claude API로만 전송돼요. 이 파일을 다른 사람에게 공유해도 키는 같이 가지 않아요.</p>
+    <div class="row2"><button class="btn" id="setCancel">닫기</button><button class="btn primary" id="setSave">저장</button></div>
+  </div>
+</div>
+<div class="settings" id="report" role="dialog" aria-modal="true" aria-labelledby="repTitle">
+  <div class="card rep">
+    <div class="rephead"><h2 id="repTitle">스카우팅 리포트</h2><span class="spacer"></span><button class="btn" id="repCopy">텍스트로 복사</button><button class="btn" id="repClose">닫기</button></div>
+    <div class="repfilter">
+      <div class="swap" id="repTeam" role="group" aria-label="공격팀"></div>
+      <div class="swap" id="repDown" role="group" aria-label="다운"></div>
+    </div>
+    <div id="repBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const CATS = [
+  {g:'상황', c:'--sit', k:'half', n:'하프', o:['전반','후반','연장']},
+  {g:'상황', c:'--sit', k:'down', n:'다운', o:['1','2','3','4','PAT 1점(5야드)','PAT 2점(10야드)']},
+  {g:'상황', c:'--sit', k:'zone', n:'필드 구간', o:['자진영(중간선 전)','상대진영(중간선 넘음)','노런존(골라인 5야드 안)']},
+  {g:'공격', c:'--off', k:'form', n:'리시버 배치', o:['3x0 트립스','2x1','번치','스택','백필드 1명 포함','기타','판별 불가']},
+  {g:'공격', c:'--off', k:'strong', n:'강한 쪽', o:['좌','우','없음','판별 불가']},
+  {g:'공격', c:'--off', k:'center', n:'센터 위치', o:['중앙','한쪽으로 치우침','판별 불가']},
+  {g:'공격', c:'--off', k:'motion', n:'모션', o:['있음','없음','판별 불가']},
+  {g:'수비', c:'--def', k:'blitz', n:'블리처 수(손 든 선수)', o:['0','1','2','판별 불가']},
+  {g:'수비', c:'--def', k:'deep', n:'딥 수비 인원', o:['0','1','2','판별 불가']},
+  {g:'수비', c:'--def', k:'cov', n:'커버리지', o:['맨','존','혼합','판별 불가']},
+  {g:'결과', c:'--res', k:'roll', n:'QB 롤링', o:['포켓(제자리)','왼쪽','오른쪽','판별 불가']},
+  {g:'결과', c:'--res', k:'ptype', n:'플레이 유형', o:['패스','핸드오프 런','기타']},
+  {g:'결과', c:'--res', k:'pdir', n:'패스 방향', o:['좌','중','우','해당 없음']},
+  {g:'결과', c:'--res', k:'pdepth', n:'패스 깊이', o:['숏(5야드 미만)','미들(5~15야드)','딥(15야드 이상)','해당 없음']},
+  {g:'결과', c:'--res', k:'result', n:'결과', o:['완료','미완료','인터셉트','색','터치다운','7초 초과','반칙','기타']},
+];
+const UNK = new Set(['판별 불가','해당 없음','기타']);
+const KEY = 'ffl-tagger-yt-v1';
+const $ = id => document.getElementById(id);
+
+
+let S = load() || {gid:'G01', teamA:'팀A', teamB:'팀B', off:'A', plays:[], sel:null};
+let active = 0, rateIdx = 2, armedReset = false;
+const RATES = [0.25,0.5,1,1.5,2];
+
+function load(){ try{ const s = JSON.parse(localStorage.getItem(KEY)); return s && Array.isArray(s.plays) ? s : null; }catch(e){ return null; } }
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }
+  catch(e){ try{ const lite = {...S, plays:S.plays.map(p=>({...p, thumb:null}))}; localStorage.setItem(KEY, JSON.stringify(lite)); }catch(e2){} }
+}
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove('show'),1800); }
+function fmt(s){ if(!isFinite(s)) s=0; s=Math.max(0,s); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=Math.floor(s%60); const mm=String(m).padStart(h?2:1,'0'), ss=String(x).padStart(2,'0'); return h? `${h}:${String(m).padStart(2,'0')}:${ss}` : `${mm}:${ss}`; }
+function sorted(){ return [...S.plays].sort((a,b)=>a.t-b.t); }
+function cur(){ return S.plays.find(p=>p.id===S.sel) || null; }
+function teamName(code){ return code==='A' ? S.teamA : S.teamB; }
+function filled(p){ return CATS.filter(c=>p[c.k]).length; }
+function esc(s){ return String(s??'').replace(/[&<>"]/g, ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+
+/* header */
+$('gid').value=S.gid; $('teamA').value=S.teamA; $('teamB').value=S.teamB;
+['gid','teamA','teamB'].forEach(id=>$(id).addEventListener('input',e=>{ S[id]=e.target.value.trim(); save(); renderList(); renderLabels(); }));
+function setOff(code){ S.off=code; $('offA').classList.toggle('on',code==='A'); $('offB').classList.toggle('on',code==='B'); const p=cur(); if(p){ p.off=code; save(); renderList(); renderLabels(); } }
+$('offA').onclick=()=>setOff('A'); $('offB').onclick=()=>setOff('B'); setOff(S.off);
+
+/* video (YouTube IFrame Player API) */
+let player=null, ready=false, dur=0, wantPlay=false, bufT=null;
+const P={
+  t(){ return ready ? player.getCurrentTime() : 0; },
+  paused(){ return !ready || player.getPlayerState()!==1; },
+  play(){ if(ready){ wantPlay=true; player.playVideo(); } }, pause(){ if(ready){ wantPlay=false; player.pauseVideo(); } },
+  seekTo(t){ if(!ready) return; const h=hi()||t; player.seekTo(Math.max(lo(),Math.min(t,h)), true); tick(); },
+};
+function parseId(u){
+  u=(u||'').trim(); if(/^[\w-]{11}$/.test(u)) return u;
+  try{ const x=new URL(u); if(x.hostname.includes('youtu.be')) return x.pathname.slice(1,12);
+    if(x.searchParams.get('v')) return x.searchParams.get('v');
+    const m=x.pathname.match(/\/(embed|shorts|live)\/([\w-]{11})/); if(m) return m[2]; }catch(e){}
+  return null;
+}
+function parseT(v){
+  v=String(v||'').trim(); if(!v) return 0;
+  const m=v.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/i);
+  if(/[hm]/i.test(v) && m) return (+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0);
+  const parts=v.split(':').map(Number); if(parts.some(isNaN)) return NaN;
+  return parts.reduce((a,b)=>a*60+b,0);
+}
+S.rs=S.rs||0; S.re=S.re||0;
+function lo(){ return S.rs||0; }
+function hi(){ return S.re && (!dur || S.re<=dur) ? S.re : dur; }
+function showRange(){
+  $('rs').value = S.rs ? fmt(S.rs) : ''; $('re').value = S.re ? fmt(S.re) : '';
+  $('scrub').min=lo(); $('scrub').max=hi()||0;
+  $('rangeInfo').textContent = (S.rs||S.re) && dur ? `${fmt(hi()-lo())} 분량` : '';
+}
+function applyRange(silent){
+  const a=parseT($('rs').value), b=parseT($('re').value);
+  if(isNaN(a)||isNaN(b)){ toast('시각은 1:05:30 처럼 적어 주세요'); return; }
+  if(b && b<=a){ toast('끝이 시작보다 뒤여야 해요'); return; }
+  S.rs=a; S.re=b; save(); showRange();
+  if(ready){ const t=P.t(); if(t<lo()||t>hi()) P.seekTo(lo()); }
+  if(!silent) toast(b ? `${fmt(a)}부터 ${fmt(b)}까지만 열어요` : (a ? `${fmt(a)}부터 열어요` : '전체 영상을 열어요'));
+}
+$('rangeApply').onclick=()=>applyRange();
+['rs','re'].forEach(id=>$(id).addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); applyRange(); } }));
+$('rsNow').onclick=()=>{ if(!ready) return; $('rs').value=fmt(P.t()); applyRange(); };
+$('reNow').onclick=()=>{ if(!ready) return; $('re').value=fmt(P.t()); applyRange(); };
+showRange();
+function st(state,msg,sub){ $('status').dataset.s=state; $('stMsg').textContent=msg; $('stSub').textContent=sub||''; }
+const ENV_WARN = location.protocol==='file:' ? '파일을 더블클릭해서 연 상태라 유튜브가 재생을 막아요. 이 파일이 있는 폴더에서 npx serve 를 실행하고 나오는 주소(http://localhost:3000 등)로 열어 주세요.' : '';
+const YT_ERR = {2:'링크의 영상 ID가 잘못됐어요.',5:'브라우저가 이 영상을 재생하지 못했어요.',100:'영상을 찾을 수 없어요. 삭제됐거나 비공개예요.',101:'영상 주인이 다른 사이트에서 재생하는 걸 막아뒀어요(퍼가기 금지).',150:'영상 주인이 다른 사이트에서 재생하는 걸 막아뒀어요(퍼가기 금지).',153:'유튜브가 이 페이지 주소를 확인하지 못해 재생을 막았어요. 파일로 직접 열었거나 미리보기 창에서 열었을 때 생겨요. localhost 주소로 열어 주세요.'};
+st(ENV_WARN?'err':'busy', ENV_WARN?'이대로는 유튜브 영상을 열 수 없어요':'유튜브 플레이어 불러오는 중…', ENV_WARN || 'youtube.com/iframe_api 스크립트를 받아오고 있어요');
+const tag=document.createElement('script');
+tag.onerror=()=>st('err','유튜브 플레이어를 불러오지 못했어요','인터넷 연결을 확인하거나, 미리보기 창이 아닌 브라우저에서 localhost 주소로 열어 주세요. 광고 차단 확장 프로그램이 막는 경우도 있어요.');
+setTimeout(()=>{ if(!apiReady && $('status').dataset.s!=='err') st('err','유튜브 플레이어 응답이 없어요 (10초 경과)','네트워크가 느리거나 이 화면에서 외부 스크립트가 막혀 있어요. 브라우저에서 localhost 주소로 다시 열어 주세요.'); },10000); tag.src='https://www.youtube.com/iframe_api'; document.head.appendChild(tag);
+let apiReady=false, pending=null;
+window.onYouTubeIframeAPIReady=()=>{ apiReady=true; if(!ENV_WARN) st('ok','플레이어 준비됨','유튜브 링크를 붙여넣고 열기를 누르세요'); if(pending){ openVideo(pending); pending=null; } };
+$('urlForm').onsubmit=e=>{ e.preventDefault(); const id=parseId($('url').value); if(!id){ st('err','유튜브 링크를 알아보지 못했어요','youtube.com/watch?v=… 또는 youtu.be/… 형태의 링크를 붙여넣어 주세요.'); return; } try{ const tt=new URL($('url').value.trim()).searchParams.get('t'); if(tt && !$('rs').value){ $('rs').value=fmt(parseT(tt)); applyRange(true); } }catch(_){} if(!id){ toast('유튜브 링크를 알아보지 못했어요'); return; } openVideo(id); };
+function openVideo(id){
+  if(!apiReady){ pending=id; if($('status').dataset.s!=='err') st('busy','플레이어 준비되면 바로 열게요','영상 ID '+id+' · 유튜브 플레이어를 아직 받아오는 중이에요'); return; }
+  st('busy','영상 불러오는 중…','영상 ID '+id+(lo()?` · ${fmt(lo())}부터`:''));
+  if(S.vid && S.vid!==id && !$('rs').value && !$('re').value){ S.rs=0; S.re=0; }
+  S.vid=id; $('url').value=`https://youtu.be/${id}`; save();
+  if(player){ player.loadVideoById({videoId:id, startSeconds:lo()}); setTimeout(()=>{ P.pause(); dur=player.getDuration()||dur; showRange(); st('ok','영상 준비됨',(player.getVideoData?.().title||'')+(dur?` · 전체 ${fmt(dur)}`:'')); },1200); return; }
+  player=new YT.Player('yt',{videoId:id, playerVars:{playsinline:1, rel:0, modestbranding:1, start:Math.floor(lo()), ...(location.origin && location.origin!=='null' ? {origin:location.origin} : {})},
+    events:{
+      onReady:()=>{ ready=true; dur=player.getDuration(); showRange(); P.seekTo(lo()); P.pause(); st('ok','영상 준비됨', (player.getVideoData?.().title||'')+(dur?` · 전체 ${fmt(dur)}`:'')+(S.re||S.rs?` · 구간 ${fmt(lo())}~${fmt(hi())}`:'')); $('drop').classList.add('hidden'); $('shield').classList.remove('off');
+        ['playBtn','scrub','rateBtn','snapBtn','ctlBtn'].forEach(x=>$(x).disabled=false); toast('영상을 열었어요. S로 스냅을 지정하세요'); },
+      onStateChange:e=>{ dur=player.getDuration()||dur; showRange(); clearTimeout(bufT);
+        const okMsg=()=>st('ok','영상 준비됨',(player.getVideoData?.().title||'')+(dur?` · 전체 ${fmt(dur)}`:'')+(wantPlay?'':' · 재생(Space)을 누르면 시작해요'));
+        if(e.data===3){
+          if(!wantPlay){ okMsg(); }  // 정지 상태에서 위치만 옮긴 경우: 실제로는 준비된 상태
+          else { st('busy','버퍼링 중…','영상 데이터를 받아오고 있어요'); bufT=setTimeout(()=>{ if(player.getPlayerState()===3) st('busy','버퍼링이 오래 걸려요','네트워크가 느리거나 화질이 높아요. 플레이어 톱니바퀴에서 화질을 낮춰 보세요.'); },8000); }
+        } else if(e.data===1||e.data===2||e.data===5||e.data===-1){ okMsg(); } $('playBtn').textContent = e.data===1 ? '정지' : '재생'; },
+      onError:e=>{ st('err','영상을 열지 못했어요 (오류 '+e.data+')', (YT_ERR[e.data]||'알 수 없는 오류예요. 다른 영상으로 시도해 보세요.')+' 지금 이 도구의 주소: '+location.href.split('?')[0]); $('drop').classList.remove('hidden'); $('drop').innerHTML='<div><strong>이 영상을 열지 못했어요</strong>비공개·연령 제한·퍼가기 금지 영상이거나, 페이지를 파일로 직접 연 경우예요. 로컬 서버(npx serve)로 열어 주세요</div>'; },
+    }});
+}
+if(S.vid){ $('url').value=`https://youtu.be/${S.vid}`; openVideo(S.vid); }
+setInterval(()=>{ if(!ready) return; if(S.re && !P.paused() && P.t()>=S.re){ P.pause(); P.seekTo(S.re); toast('구간 끝에 도달했어요'); } tick(); },200);
+function tick(){ const t=P.t(); $('time').textContent=`${fmt(t)} / ${fmt(dur)}`; if(document.activeElement!==$('scrub')) $('scrub').value=t; }
+$('scrub').oninput=e=>P.seekTo(+e.target.value);
+$('playBtn').onclick=togglePlay;
+$('shield').onclick=togglePlay;
+$('ctlBtn').onclick=()=>{ const off=$('shield').classList.toggle('off'); $('ctlBtn').classList.toggle('primary',off); toast(off?'유튜브 컨트롤을 쓰는 동안은 단축키가 안 먹을 수 있어요. 다시 누르면 돌아와요':'단축키 모드로 돌아왔어요'); };
+function togglePlay(){ if(!ready) return; P.paused() ? P.play() : P.pause(); }
+function seek(d){ P.seekTo(P.t()+d); }
+function setRate(i){ rateIdx=Math.max(0,Math.min(RATES.length-1,i)); if(ready) player.setPlaybackRate(RATES[rateIdx]); $('rateBtn').textContent=RATES[rateIdx]+'x'; }
+$('rateBtn').onclick=()=>setRate((rateIdx+1)%RATES.length);
+$('snapBtn').onclick=snap;
+function setMono(on){ S.mono=!!on; $('stage').classList.toggle('mono',S.mono); $('monoBtn').classList.toggle('primary',S.mono); $('monoBtn').setAttribute('aria-pressed',S.mono); save(); }
+$('monoBtn').onclick=()=>setMono(!S.mono); setMono(S.mono);
+const link=p=>`https://youtu.be/${p.vid||S.vid}?t=${Math.floor(p.t)}`;
+function snap(){
+  if(!ready) return;
+  P.pause(); const t=P.t();
+  const prev = sorted().filter(p=>p.t<=t).pop();
+  const p = {id:Date.now().toString(36)+Math.random().toString(36).slice(2,6), t, vid:S.vid, off:S.off,
+    half: prev?.half || '', score: prev?.score ?? '', yards:'', memo:''};
+  S.plays.push(p); S.sel=p.id;
+  active = CATS.findIndex(c=>!p[c.k]);
+  save(); renderList(); renderLabels();
+  toast(`플레이를 추가했어요 · ${fmt(p.t)}`);
+}
+
+/* labels */
+function pick(k, v){
+  const p=cur(); if(!p) return;
+  p[k] = p[k]===v ? '' : v;
+  if(k==='ptype' && p.ptype && p.ptype!=='패스'){ p.pdir='해당 없음'; p.pdepth='해당 없음'; }
+  if(k==='ptype' && p.ptype==='패스'){ if(p.pdir==='해당 없음') p.pdir=''; if(p.pdepth==='해당 없음') p.pdepth=''; }
+  if(p[k]){ // advance to next empty category
+    const next = CATS.findIndex((c,i)=>i>CATS.findIndex(x=>x.k===k) && !p[c.k]);
+    active = next>=0 ? next : active;
+  }
+  save(); renderLabels(); renderList();
+}
+function renderLabels(){
+  const el=$('labels'), p=cur();
+  if(!p){ el.innerHTML='<div class="lhead"><h2>라벨</h2></div><div class="empty">영상을 열고 스냅 직전 장면에서 <kbd>S</kbd>를 누르면<br>새 플레이가 생기고 여기서 라벨을 고를 수 있어요</div>'; return; }
+  const n = sorted().findIndex(x=>x.id===p.id)+1;
+  let h = `<div class="lhead"><h2>플레이 ${n}</h2><span class="meta">${fmt(p.t)} · ${esc(teamName(p.off))} 공격 · ${filled(p)}/${CATS.length}</span></div>`;
+  let g='';
+  CATS.forEach((c,i)=>{
+    if(c.g!==g){ if(g) h+='</div>'; g=c.g; h+=`<div class="group" style="--g:var(${c.c})"><h3>${c.g}</h3>`; }
+    h+=`<div class="cat${i===active?' active':''}" data-i="${i}"><div class="name">${c.n}</div><div class="chips">`;
+    c.o.forEach((v,j)=>{ h+=`<button class="chip${UNK.has(v)?' unk':''}${p[c.k]===v?' on':''}" data-k="${c.k}" data-v="${esc(v)}"><span class="k">${j+1}</span>${esc(v)}</button>`; });
+    h+='</div></div>';
+    if(c.k==='zone') h+=`<div class="nums" style="grid-template-columns:1fr"><label>점수차 (공격팀 기준, 지고 있으면 음수)<input type="number" data-num="score" value="${esc(p.score)}"></label></div>`;
+  });
+  h+=`</div><div class="nums"><label>획득 야드<input type="number" data-num="yards" value="${esc(p.yards)}"></label><span></span></div>`;
+  h+=`<div class="memo"><label>메모<textarea data-num="memo">${esc(p.memo)}</textarea></label></div>`;
+  el.innerHTML=h;
+  if(window.__aiReady) renderAI(el,p);
+  el.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ active=+b.closest('.cat').dataset.i; pick(b.dataset.k,b.dataset.v); });
+  el.querySelectorAll('[data-num]').forEach(inp=>inp.oninput=e=>{ p[inp.dataset.num]=e.target.value; save(); renderListSoon(); });
+  const a=el.querySelector('.cat.active'); if(a && document.activeElement===document.body) a.scrollIntoView({block:'nearest'});
+}
+
+/* list */
+let rl; function renderListSoon(){ clearTimeout(rl); rl=setTimeout(renderList,250); }
+function summary(p){
+  const bits=[p.form, p.cov && p.cov+' 수비', p.ptype && [p.ptype, p.result].filter(Boolean).join(' '), p.yards!=='' && p.yards!=null ? (p.yards>0?'+':'')+p.yards+'야드':''].filter(Boolean);
+  return bits.join(' · ') || '<small>라벨 없음</small>';
+}
+function renderList(){
+  const arr=sorted(), el=$('list');
+  $('pmeta').textContent=`${arr.length}개 · 완료 ${arr.filter(p=>filled(p)===CATS.length).length}개`;
+  if(!arr.length){ el.innerHTML='<div class="empty">아직 플레이가 없어요</div>'; return; }
+  el.innerHTML=arr.map((p,i)=>{ const f=filled(p);
+    return `<div class="row${p.id===S.sel?' sel':''}" data-id="${p.id}">
+    <span class="n">${i+1}</span><a class="t ytlink" href="${link(p)}" target="_blank" rel="noopener">${fmt(p.t)}</a>
+    <span class="s">${esc(teamName(p.off))} · ${summary(p)}</span>
+    <span class="p${f===CATS.length?' done':''}">${f}/${CATS.length}</span>
+    <button class="del" data-del="${p.id}" aria-label="플레이 ${i+1} 삭제">×</button></div>`; }).join('');
+  el.querySelectorAll('.row').forEach(r=>r.onclick=e=>{
+    if(e.target.dataset.del){ S.plays=S.plays.filter(p=>p.id!==e.target.dataset.del); if(S.sel===e.target.dataset.del) S.sel=null; save(); renderList(); renderLabels(); return; }
+    select(r.dataset.id, true);
+  });
+  const s=el.querySelector('.row.sel'); if(s) s.scrollIntoView({block:'nearest'});
+}
+function select(id, go){
+  S.sel=id; const p=cur(); if(!p) return;
+  setOff(p.off||S.off);
+  const e=CATS.findIndex(c=>!p[c.k]); active = e>=0?e:0;
+  if(go && ready){ P.pause(); P.seekTo(p.t); }
+  save(); renderList(); renderLabels();
+}
+
+/* export */
+const HEAD=['경기 ID','플레이 #','영상 시각(mm:ss)','공격팀','하프','다운','필드 구간','점수차(공격팀 기준)','리시버 배치','강한 쪽','센터 위치','모션','블리처 수(손 든 선수)','딥 수비 인원','커버리지','플레이 유형','패스 방향','패스 깊이','결과','획득 야드','메모','영상 링크','루트','QB 롤링'];
+function rows(){ return sorted().map((p,i)=>[S.gid, i+1, fmt(p.t), teamName(p.off), p.half, p.down, p.zone, p.score, p.form, p.strong, p.center, p.motion, p.blitz, p.deep, p.cov, p.ptype, p.pdir, p.pdepth, p.result, p.yards, p.memo, link(p), routeStr(p), p.roll].map(v=>v??'')); }
+$('copyBtn').onclick=async()=>{
+  const r=rows(); if(!r.length){ toast('복사할 플레이가 없어요'); return; }
+  const tsv=r.map(x=>x.map(v=>String(v).replace(/[\t\n]/g,' ')).join('\t')).join('\n');
+  let ok=false;
+  try{ await navigator.clipboard.writeText(tsv); ok=true; }catch(e){
+    const ta=document.createElement('textarea'); ta.value=tsv; document.body.appendChild(ta); ta.select();
+    try{ ok=document.execCommand('copy'); }catch(e2){} ta.remove();
+  }
+  toast(ok ? `${r.length}개 플레이를 복사했어요. 시트의 A2 칸에 붙여넣으세요` : '복사하지 못했어요. CSV 저장을 이용해 주세요');
+};
+$('csvBtn').onclick=()=>{
+  const r=rows(); if(!r.length){ toast('저장할 플레이가 없어요'); return; }
+  const q=v=>{ v=String(v); return /[",\n]/.test(v) ? `"${v.replace(/"/g,'""')}"` : v; };
+  const csv='\ufeff'+[HEAD,...r].map(x=>x.map(q).join(',')).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`${S.gid||'game'}_plays.csv`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast('CSV를 저장했어요');
+};
+$('bakBtn').onclick=()=>{
+  const d=new Date(), stamp=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify({app:'ffl-tagger',version:1,savedAt:d.toISOString(),state:S},null,1)],{type:'application/json'}));
+  a.download=`flag-tagger-backup-${stamp}.json`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  S.lastBackup=Date.now(); save(); toast('백업 파일을 저장했어요');
+};
+$('resBtn').onclick=()=>$('resFile').click();
+$('resFile').onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f) return;
+  try{
+    const j=JSON.parse(await f.text()); const st=j.state||j;
+    if(!Array.isArray(st.plays)) throw new Error('형식');
+    const have=new Set(S.plays.map(p=>p.id)); const add=st.plays.filter(p=>!have.has(p.id));
+    if(!S.plays.length){ Object.assign(S, st); } else { S.plays.push(...add); }
+    save(); ['gid','teamA','teamB'].forEach(id=>$(id).value=S[id]||''); setOff(S.off||'A'); showRange();
+    if(S.vid && S.vid!==player?.getVideoData?.().video_id) openVideo(S.vid);
+    renderList(); renderLabels(); toast(`${add.length || st.plays.length}개 플레이를 불러왔어요`);
+  }catch(err){ toast('백업 파일을 읽지 못했어요. 이 도구에서 저장한 .json 파일인지 확인해 주세요'); }
+};
+setInterval(()=>{ if(S.plays.length>=10 && Date.now()-(S.lastBackup||0)>30*60*1000 && $('bakBtn')) $('bakBtn').classList.add('primary'); else $('bakBtn').classList.remove('primary'); },5000);
+$('resetBtn').onclick=()=>{
+  if(!armedReset){ armedReset=true; $('resetBtn').textContent='한 번 더 누르면 모두 지워요'; setTimeout(()=>{ armedReset=false; $('resetBtn').textContent='새 경기'; },3000); return; }
+  armedReset=false; $('resetBtn').textContent='새 경기';
+  S.plays=[]; S.sel=null; const m=(S.gid||'').match(/^(.*?)(\d+)$/); if(m){ S.gid=m[1]+String(+m[2]+1).padStart(m[2].length,'0'); $('gid').value=S.gid; }
+  save(); renderList(); renderLabels(); toast('새 경기를 시작했어요');
+};
+
+/* keyboard */
+document.addEventListener('keydown',e=>{
+  if($('report').classList.contains('open')||$('settings').classList.contains('open')) return;
+  const tag=(e.target.tagName||'').toLowerCase();
+  if(tag==='input'||tag==='textarea'){ if(e.key==='Escape') e.target.blur(); return; }
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  const k=e.key;
+  if(k===' '){ e.preventDefault(); togglePlay(); }
+  else if(k==='ArrowLeft'){ e.preventDefault(); seek(e.shiftKey?-5:-1); }
+  else if(k==='ArrowRight'){ e.preventDefault(); seek(e.shiftKey?5:1); }
+  else if(k===','){ P.pause(); seek(-1/30); }
+  else if(k==='.'){ P.pause(); seek(1/30); }
+  else if(k==='['){ setRate(rateIdx-1); }
+  else if(k===']'){ setRate(rateIdx+1); }
+  else if(k==='s'||k==='S'||k==='ㄴ'){ snap(); }
+  else if(k==='a'||k==='A'||k==='ㅁ'){ runAI(); }
+  else if(k==='b'||k==='B'||k==='ㅠ'){ setMono(!S.mono); }
+  else if(k==='t'||k==='T'||k==='ㅅ'){ setOff(S.off==='A'?'B':'A'); }
+  else if(k==='g'||k==='G'||k==='ㅎ'){ const p=cur(); if(p&&ready){ P.pause(); P.seekTo(p.t); } }
+  else if(k==='ArrowUp'){ e.preventDefault(); if(cur()){ active=(active-1+CATS.length)%CATS.length; renderLabels(); } }
+  else if(k==='ArrowDown'){ e.preventDefault(); if(cur()){ active=(active+1)%CATS.length; renderLabels(); } }
+  else if(/^[1-9]$/.test(k)){ const c=CATS[active], v=c&&c.o[+k-1]; if(v&&cur()) pick(c.k,v); }
+});
+
+/* ===== AI 루트 분석 (화면 캡처 + Claude) ===== */
+const ALIGN=['왼쪽 1번(바깥)','왼쪽 2번','왼쪽 3번','센터','백필드','오른쪽 3번','오른쪽 2번','오른쪽 1번(바깥)'];
+const ROUTES=['고','슬랜트','아웃','인','컬','힛치','코너','포스트','휠','플랫','드래그','스크린','컴백','블록/보호','판별 불가'];
+const AKEY='ffl-anthropic-key', ACFG='ffl-ai-cfg';
+let cfg={model:'claude-sonnet-5-5', step:0.25}; try{ Object.assign(cfg, JSON.parse(localStorage.getItem(ACFG))||{}); }catch(e){}
+const getKey=()=>{ try{ return localStorage.getItem(AKEY)||''; }catch(e){ return ''; } };
+let aiBusy=false, aiMsg='', aiErr=false, capStream=null, capVideo=null, cropped=false;
+const framesMem={}; // play id -> dataURL[] (메모리에만)
+
+function routeStr(p){ return Object.entries(p.routes||{}).filter(([,r])=>r).map(([a,r])=>`${a}:${r}`).join(' / '); }
+function aiStatus(msg,err){ aiMsg=msg; aiErr=!!err; const e=document.getElementById('aiStl'); if(e){ e.textContent=msg; e.classList.toggle('err',aiErr); } }
+
+/* settings */
+function openSet(){ $('apiKey').value=getKey(); $('model').value=cfg.model; $('fps').value=String(cfg.step); $('settings').classList.add('open'); $('apiKey').focus(); }
+$('aiSetBtn').onclick=openSet;
+$('setCancel').onclick=()=>$('settings').classList.remove('open');
+$('settings').addEventListener('click',e=>{ if(e.target.id==='settings') $('settings').classList.remove('open'); });
+$('setSave').onclick=()=>{ try{ localStorage.setItem(AKEY,$('apiKey').value.trim()); }catch(e){} cfg.model=$('model').value; cfg.step=+$('fps').value; try{ localStorage.setItem(ACFG,JSON.stringify(cfg)); }catch(e){} $('settings').classList.remove('open'); toast('AI 설정을 저장했어요'); renderLabels(); };
+
+/* capture */
+async function ensureStream(){
+  if(capStream && capStream.getVideoTracks()[0]?.readyState==='live') return true;
+  if(!navigator.mediaDevices?.getDisplayMedia){ aiStatus('이 브라우저는 화면 캡처를 지원하지 않아요. 크롬이나 엣지에서 열어 주세요.',true); return false; }
+  aiStatus('화면 공유 창에서 "이 탭"을 골라 주세요');
+  try{
+    capStream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:'browser', frameRate:30}, audio:false, preferCurrentTab:true, selfBrowserSurface:'include', surfaceSwitching:'exclude'});
+  }catch(e){ aiStatus('화면 공유가 취소됐어요. AI 분석에는 이 탭 공유가 필요해요.',true); return false; }
+  const track=capStream.getVideoTracks()[0];
+  track.addEventListener('ended',()=>{ capStream=null; cropped=false; });
+  cropped=false;
+  try{ if(window.CropTarget && track.cropTo){ await track.cropTo(await CropTarget.fromElement($('stage'))); cropped=true; } }catch(e){ cropped=false; }
+  capVideo=document.createElement('video'); capVideo.muted=true; capVideo.playsInline=true; capVideo.srcObject=capStream; await capVideo.play();
+  await new Promise(r=>setTimeout(r,300));
+  return true;
+}
+function grab(){
+  const v=capVideo, vw=v.videoWidth, vh=v.videoHeight; if(!vw) return null;
+  let sx=0, sy=0, sw=vw, sh=vh;
+  if(!cropped){ const r=$('stage').getBoundingClientRect(), k=vw/window.innerWidth; sx=r.left*k; sy=r.top*k; sw=r.width*k; sh=r.height*k; }
+  const W=Math.min(1024, Math.round(sw)), H=Math.round(W*sh/sw);
+  const c=document.createElement('canvas'); c.width=W; c.height=H; c.getContext('2d').drawImage(v,sx,sy,sw,sh,0,0,W,H);
+  return c.toDataURL('image/jpeg',0.72);
+}
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function waitFor(fn,ms){ const t0=Date.now(); while(Date.now()-t0<ms){ if(fn()) return true; await wait(80); } return false; }
+
+async function captureClip(p){
+  const pre=1, post=5, step=cfg.step||0.25;
+  $('stage').scrollIntoView({block:'nearest'});
+  const wasMono=S.mono; if(wasMono) $('stage').classList.remove('mono');
+  try{
+    P.pause(); setRate(2); P.seekTo(Math.max(lo(), p.t-pre)); await wait(300);
+    if(player.getPlaybackRate()!==1) player.setPlaybackRate(1);
+    $('rateBtn').textContent='1x'; rateIdx=2;
+    P.play();
+    if(!await waitFor(()=>player.getPlayerState()===1,8000)){ throw new Error('영상이 재생되지 않았어요'); }
+    const frames=[]; let next=p.t-pre; const tEnd=p.t+post, t0=Date.now();
+    while(Date.now()-t0<(pre+post+6)*1000){
+      const t=P.t();
+      if(player.getPlayerState()===3){ await wait(60); continue; }
+      if(t>=next-0.03){ const img=grab(); if(img) frames.push({img, rel:+(t-p.t).toFixed(2)}); next=t+step; aiStatus(`캡처 중 ${frames.length}장 · 스냅 기준 ${(t-p.t>=0?'+':'')}${(t-p.t).toFixed(1)}초`); }
+      if(t>=tEnd) break;
+      await wait(30);
+    }
+    P.pause();
+    return frames;
+  } finally { if(wasMono) $('stage').classList.add('mono'); }
+}
+
+/* Claude */
+function buildPrompt(p, frames){
+  const known=CATS.filter(c=>p[c.k] && !UNK.has(p[c.k])).map(c=>`${c.n}: ${p[c.k]}`).join(', ');
+  const sys=`너는 IFAF 5v5 플래그풋볼 전력분석가다. 경기 중계 화면을 시간 순서대로 캡처한 연속 프레임을 받는다.
+규칙 요약: 공격 5명(QB, 스냅 후 리시버로 뛸 수 있는 센터, 리시버 3명). 수비 중 스크리미지 라인에서 7야드 넘게 떨어져 손을 든 선수는 블리처(최대 2명).
+할 일: 스냅 직전 프레임에서 공격 리시버들의 정렬 위치를 정하고, 스냅 이후 각자의 패스 루트를 판정한다.
+위치 기준: 공격팀 QB가 상대 엔드존을 바라볼 때의 왼쪽/오른쪽. 같은 쪽에서 사이드라인에 가장 가까운 선수가 1번.
+정렬 위치 값: ${ALIGN.join(', ')}.
+루트 값: ${ROUTES.join(', ')}.
+원칙: 화면 밖으로 나가거나 겹쳐서 확인할 수 없으면 반드시 "판별 불가". 추측하지 않는다. confidence는 0~1.
+출력은 아래 JSON 하나만. 설명, 마크다운 코드블록 금지.
+{"attack_direction":"화면 왼쪽→오른쪽|화면 오른쪽→왼쪽|판별 불가","snap_frame":정수,"formation":"${CATS[3].o.join('|')}","blitzers":"0|1|2|판별 불가","coverage":"맨|존|혼합|판별 불가","receivers":[{"alignment":"정렬 위치 값","route":"루트 값","depth_yards":숫자또는null,"confidence":0.0,"visible":"전부|일부|화면 밖"}],"target":"공을 받은 선수의 정렬 위치 값 또는 null","notes":"판단 근거 한두 문장(한국어)"}`;
+  const content=[];
+  frames.forEach((f,i)=>{ content.push({type:'text', text:`프레임 ${i} · 스냅 기준 ${f.rel>=0?'+':''}${f.rel.toFixed(2)}초`}); content.push({type:'image', source:{type:'base64', media_type:'image/jpeg', data:f.img.split(',')[1]}}); });
+  content.push({type:'text', text:`공격팀: ${teamName(p.off)}. 스냅은 대략 +0.00초 근처 프레임이다.${known?` 사람이 기록한 참고 정보: ${known}.`:''} 위 형식의 JSON만 출력해.`});
+  return {sys, content};
+}
+async function askClaude(p, frames){
+  const key=getKey(); const {sys,content}=buildPrompt(p,frames);
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST', headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:cfg.model, max_tokens:2000, system:sys, messages:[{role:'user', content}]})});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok){
+    const m=data?.error?.message||res.statusText;
+    if(res.status===401) throw new Error('API 키가 올바르지 않아요. AI 설정에서 다시 확인해 주세요.');
+    if(res.status===429) throw new Error('요청이 너무 많아요. 잠시 후 다시 시도해 주세요. ('+m+')');
+    throw new Error(`Claude 오류 ${res.status}: ${m}`);
+  }
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').replace(/```json|```/g,'').trim();
+  const j=JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}')+1));
+  j._usage=data.usage; j._model=data.model||cfg.model; j._at=new Date().toISOString(); j._frames=frames.length;
+  return j;
+}
+async function runAI(){
+  const p=cur(); if(!p){ toast('먼저 플레이를 선택하세요'); return; }
+  if(aiBusy) return; if(!ready){ toast('영상을 먼저 열어 주세요'); return; }
+  if(!getKey()){ openSet(); toast('Claude API 키를 먼저 넣어 주세요'); return; }
+  aiBusy=true; renderLabels();
+  try{
+    if(!await ensureStream()) return;
+    const frames=await captureClip(p);
+    if(frames.length<4) throw new Error('캡처된 장면이 너무 적어요. 이 탭을 공유했는지 확인해 주세요.');
+    framesMem[p.id]=frames.map(f=>f.img);
+    aiStatus(`Claude 분석 중… (${frames.length}장)`);
+    const r=await askClaude(p, frames);
+    p.ai=r; if(!p.routes || !Object.keys(p.routes).length){ p.routes={}; (r.receivers||[]).forEach(x=>{ if(ALIGN.includes(x.alignment)) p.routes[x.alignment]=ROUTES.includes(x.route)?x.route:'판별 불가'; }); }
+    save(); aiStatus(`분석 완료 · ${frames.length}장 · 입력 ${r._usage?.input_tokens??'?'} / 출력 ${r._usage?.output_tokens??'?'} 토큰`);
+  }catch(e){ aiStatus(e.message||'분석에 실패했어요',true); }
+  finally{ aiBusy=false; renderLabels(); renderList(); }
+}
+
+/* panel */
+function renderAI(el,p){
+  const box=document.createElement('div'); box.className='ai';
+  const r=p.ai, key=getKey();
+  let h=`<h3>AI 루트 분석</h3><div class="bar"><button class="btn run" id="aiRun" ${aiBusy?'disabled':''}>${aiBusy?'분석 중…':(r?'다시 분석 (A)':'AI 루트 분석 (A)')}</button>${key?'':'<span class="conf">AI 설정에서 API 키를 먼저 넣어 주세요</span>'}</div>`;
+  h+=`<div class="stl${aiErr?' err':''}" id="aiStl">${esc(aiMsg|| (r?`${r._model} · ${new Date(r._at).toLocaleString()} 분석`:'스냅 1초 전부터 5초 후까지 재생하면서 캡처해 Claude에게 보내요'))}</div>`;
+  if(r){
+    const sug=[['form','formation'],['blitz','blitzers'],['cov','coverage']].map(([k,rk])=>{ const c=CATS.find(x=>x.k===k), v=r[rk]; if(!v||!c.o.includes(v)) return ''; return `<span>${c.n}: ${esc(v)}${p[k]===v?' ✓':`<button data-apply="${k}" data-v="${esc(v)}">적용</button>`}</span>`; }).join('');
+    if(sug) h+=`<div class="sug">${sug}</div>`;
+    const rows=new Set([...(r.receivers||[]).map(x=>x.alignment), ...Object.keys(p.routes||{})].filter(a=>ALIGN.includes(a)));
+    h+=`<table><thead><tr><th>위치</th><th>AI 판정</th><th>확정 루트</th></tr></thead><tbody>`;
+    [...rows].sort((a,b)=>ALIGN.indexOf(a)-ALIGN.indexOf(b)).forEach(a=>{
+      const x=(r.receivers||[]).find(y=>y.alignment===a); const v=(p.routes||{})[a]||'';
+      h+=`<tr><td>${esc(a)}${r.target===a?' ●':''}</td><td>${x?`${esc(x.route)}${x.depth_yards!=null?` · ${esc(x.depth_yards)}야드`:''} <span class="conf">${Math.round((+x.confidence||0)*100)}%${x.visible&&x.visible!=='전부'?' · '+esc(x.visible):''}</span>`:'<span class="conf">—</span>'}</td>
+      <td><select data-route="${esc(a)}"><option value="">선택</option>${ROUTES.map(o=>`<option${o===v?' selected':''}>${o}</option>`).join('')}</select></td></tr>`;
+    });
+    h+=`</tbody></table>`;
+    h+=`<div class="bar" style="margin-top:6px"><select id="addAlign"><option value="">+ 리시버 추가</option>${ALIGN.filter(a=>!rows.has(a)).map(a=>`<option>${a}</option>`).join('')}</select></div>`;
+    if(r.notes) h+=`<div class="notes">${esc(r.notes)}${r.attack_direction?` · 공격 방향 ${esc(r.attack_direction)}`:''}</div>`;
+  }
+  const fr=framesMem[p.id]; if(fr) h+=`<div class="strip" aria-label="캡처한 장면">${fr.map(u=>`<img src="${u}" alt="">`).join('')}</div>`;
+  box.innerHTML=h; el.appendChild(box);
+  box.querySelector('#aiRun').onclick=runAI;
+  box.querySelectorAll('[data-apply]').forEach(b=>b.onclick=()=>{ p[b.dataset.apply]=b.dataset.v; save(); renderLabels(); renderList(); });
+  box.querySelectorAll('[data-route]').forEach(sel=>sel.onchange=()=>{ p.routes=p.routes||{}; p.routes[sel.dataset.route]=sel.value; save(); renderListSoon(); });
+  const add=box.querySelector('#addAlign'); if(add) add.onchange=()=>{ if(!add.value) return; p.routes=p.routes||{}; p.routes[add.value]=''; save(); renderLabels(); };
+}
+
+/* ===== 스카우팅 리포트 ===== */
+const ROUTE_DIR={'아웃':'바깥','코너':'바깥','휠':'바깥','플랫':'바깥','컴백':'바깥','슬랜트':'안쪽','인':'안쪽','포스트':'안쪽','드래그':'안쪽','고':'수직','컬':'멈춤형','힛치':'멈춤형'};
+let repTeam='A', repDown='전체';
+const pct=(a,b)=>b?Math.round(a/b*100):0;
+function dist(list, key, opts){ const v=list.map(p=>p[key]).filter(x=>x && !UNK.has(x)); return {n:v.length, rows:opts.filter(o=>!UNK.has(o)).map(o=>[o, v.filter(x=>x===o).length])}; }
+function bars(d, labelMap){
+  if(!d.n) return '<div class="note">아직 기록이 없어요</div>';
+  const mx=Math.max(...d.rows.map(r=>r[1]));
+  return '<div class="bars">'+d.rows.map(([k,c])=>`<div class="bar1${c===mx&&c>0?' top':''}"><span>${esc(labelMap?.[k]||k)}</span><span class="tr"><span class="fl" style="width:${pct(c,d.n)}%;display:block"></span></span><span class="v">${pct(c,d.n)}% (${c})</span></div>`).join('')+'</div>';
+}
+function lead(d, labelMap){ if(!d.n) return null; const r=[...d.rows].sort((a,b)=>b[1]-a[1])[0]; return {k:labelMap?.[r[0]]||r[0], p:pct(r[1],d.n)}; }
+function repData(){
+  const team = repTeam==='A'?S.teamA:S.teamB;
+  let L=S.plays.filter(p=>(p.off||'A')===repTeam);
+  if(repDown!=='전체') L=L.filter(p=>String(p.down)===repDown);
+  const pass=L.filter(p=>p.ptype==='패스'), run=L.filter(p=>p.ptype==='핸드오프 런');
+  const roll=dist(L,'roll',['왼쪽','포켓(제자리)','오른쪽']);
+  const depth=dist(pass,'pdepth',['숏(5야드 미만)','미들(5~15야드)','딥(15야드 이상)']);
+  const dir=dist(pass,'pdir',['좌','중','우']);
+  const outIn={n:0,rows:[['바깥',0],['안쪽',0],['수직',0],['멈춤형',0]]};
+  L.forEach(p=>Object.values(p.routes||{}).forEach(r=>{ const d=ROUTE_DIR[r]; if(d){ outIn.n++; outIn.rows.find(x=>x[0]===d)[1]++; } }));
+  const tgt={}; L.forEach(p=>{ const a=p.ai?.target; const r=a && (p.routes||{})[a]; if(r && !UNK.has(r)) tgt[r]=(tgt[r]||0)+1; });
+  const tgtRows=Object.entries(tgt).sort((a,b)=>b[1]-a[1]).slice(0,5); const tgtN=tgtRows.reduce((a,b)=>a+b[1],0);
+  const att=pass.filter(p=>['완료','미완료','인터셉트','터치다운'].includes(p.result));
+  const comp=att.filter(p=>['완료','터치다운'].includes(p.result));
+  const yd=pass.filter(p=>p.yards!==''&&p.yards!=null&&!isNaN(+p.yards)).map(p=>+p.yards);
+  const avg=yd.length? (yd.reduce((a,b)=>a+b,0)/yd.length):null;
+  const form=dist(L,'form',CATS.find(c=>c.k==='form').o);
+  return {team,L,pass,run,roll,depth,dir,outIn,tgtRows,tgtN,att,comp,yd,avg,form};
+}
+function renderReport(){
+  const D=repData();
+  $('repTeam').innerHTML=['A','B'].map(c=>`<button data-t="${c}" class="${repTeam===c?'on':''}">${esc(c==='A'?S.teamA:S.teamB)} 공격</button>`).join('');
+  $('repDown').innerHTML=['전체','1','2','3','4'].map(d=>`<button data-d="${d}" class="${repDown===d?'on':''}">${d==='전체'?'모든 다운':d+'다운'}</button>`).join('');
+  $('repTeam').querySelectorAll('button').forEach(b=>b.onclick=()=>{ repTeam=b.dataset.t; renderReport(); });
+  $('repDown').querySelectorAll('button').forEach(b=>b.onclick=()=>{ repDown=b.dataset.d; renderReport(); });
+  if(!D.L.length){ $('repBody').innerHTML='<div class="empty">이 조건에 해당하는 플레이가 없어요</div>'; return; }
+  const short=D.depth.n? pct(D.depth.rows[0][1],D.depth.n):null;
+  const outside=D.dir.n? pct(D.dir.rows[0][1]+D.dir.rows[2][1],D.dir.n):null;
+  const outR=D.outIn.n? pct(D.outIn.rows[0][1],D.outIn.n):null;
+  const dirMap={'좌':'왼쪽','중':'가운데','우':'오른쪽'};
+  const rl=lead(D.roll), fm=lead(D.form);
+  const sum=[
+    rl && `QB는 ${rl.k==='포켓(제자리)'?'주로 포켓에 머물러요':`주로 ${rl.k}으로 롤링해요`} (${rl.p}%)`,
+    short!=null && `패스의 ${short}%가 숏패스`,
+    outside!=null && `패스의 ${outside}%를 바깥(좌우)으로 던져요`,
+    outR!=null && `루트의 ${outR}%가 바깥으로 꺾는 루트`,
+    fm && `가장 많이 쓰는 포메이션은 ${fm.k} (${fm.p}%)`,
+  ].filter(Boolean);
+  let h=`<p class="repsum">${esc(D.team)} 공격 ${D.L.length}플레이 (패스 ${D.pass.length} · 런 ${D.run.length})${sum.length?'<br>'+sum.map(esc).join('<br>'):''}</p><div class="repgrid">`;
+  h+=`<div class="metric"><h4>QB 롤링 방향</h4><div class="q">QB가 스냅 후 어느 쪽으로 움직이나</div>${bars(D.roll)}<div class="note">표본 ${D.roll.n}플레이</div></div>`;
+  h+=`<div class="metric"><h4>패스 깊이</h4><div class="q">숏패스 위주인가</div><div class="big">${short!=null?short+'%':'—'}<small>숏패스 비율</small></div>${bars(D.depth,{'숏(5야드 미만)':'숏','미들(5~15야드)':'미들','딥(15야드 이상)':'딥'})}<div class="note">표본 패스 ${D.depth.n}개</div></div>`;
+  h+=`<div class="metric"><h4>패스 방향</h4><div class="q">바깥으로 던지나 가운데로 던지나</div><div class="big">${outside!=null?outside+'%':'—'}<small>바깥(좌+우) 비율</small></div>${bars(D.dir,dirMap)}<div class="note">표본 패스 ${D.dir.n}개</div></div>`;
+  h+=`<div class="metric"><h4>루트 방향</h4><div class="q">바깥으로 나가는 작전이 많은가</div><div class="big">${outR!=null?outR+'%':'—'}<small>바깥 꺾임 비율</small></div>${bars(D.outIn)}<div class="note">확정 루트 ${D.outIn.n}개 기준 · 바깥: 아웃·코너·휠·플랫·컴백 / 안쪽: 슬랜트·인·포스트·드래그</div></div>`;
+  h+=`<div class="metric"><h4>비거리 · 성공률</h4><div class="q">패스가 얼마나 나가고 얼마나 성공하나</div><div class="big">${D.avg!=null?(D.avg>0?'+':'')+D.avg.toFixed(1)+'야드':'—'}<small>패스당 평균 획득</small></div>
+    <div class="bars"><div class="bar1"><span>성공률</span><span class="tr"><span class="fl" style="width:${pct(D.comp.length,D.att.length)}%;display:block"></span></span><span class="v">${pct(D.comp.length,D.att.length)}% (${D.comp.length}/${D.att.length})</span></div>
+    <div class="bar1"><span>딥 시도</span><span class="tr"><span class="fl" style="width:${D.depth.n?pct(D.depth.rows[2][1],D.depth.n):0}%;display:block"></span></span><span class="v">${D.depth.n?pct(D.depth.rows[2][1],D.depth.n):0}%</span></div></div>
+    <div class="note">획득 야드 기준이라 공이 날아간 거리(에어 야드)와는 달라요. 표본 ${D.yd.length}개</div></div>`;
+  h+=`<div class="metric"><h4>주로 공이 가는 루트</h4><div class="q">패스를 받은 선수의 루트</div>${D.tgtN?bars({n:D.tgtN, rows:D.tgtRows}):'<div class="note">AI 분석에서 공 받은 선수(●)가 있는 플레이부터 집계돼요</div>'}</div>`;
+  h+=`<div class="metric"><h4>포메이션</h4><div class="q">자주 쓰는 정렬</div>${bars(D.form)}<div class="note">표본 ${D.form.n}플레이</div></div>`;
+  h+='</div>';
+  $('repBody').innerHTML=h;
+  $('repBody').dataset.text=`[${D.team} 공격 스카우팅${repDown==='전체'?'':' · '+repDown+'다운'}] ${D.L.length}플레이 (패스 ${D.pass.length} · 런 ${D.run.length})\n`+sum.map(x=>'- '+x).join('\n')+(D.avg!=null?`\n- 패스당 평균 ${D.avg.toFixed(1)}야드, 성공률 ${pct(D.comp.length,D.att.length)}%`:'');
+}
+$('repBtn').onclick=()=>{ repTeam=S.off||'A'; renderReport(); $('report').classList.add('open'); };
+$('repClose').onclick=()=>$('report').classList.remove('open');
+$('report').addEventListener('click',e=>{ if(e.target.id==='report') $('report').classList.remove('open'); });
+$('repCopy').onclick=async()=>{ const t=$('repBody').dataset.text||''; try{ await navigator.clipboard.writeText(t); toast('리포트 요약을 복사했어요'); }catch(e){ toast('복사하지 못했어요'); } };
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ $('report').classList.remove('open'); $('settings').classList.remove('open'); } });
+
+window.__aiReady=true;
+renderList(); renderLabels();
+</script>
+</body>
+</html>
