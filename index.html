@@ -177,7 +177,7 @@ kbd{font-family:inherit; font-size:11px; border:1px solid var(--line); border-bo
 .bar1 .tr{height:10px; border-radius:5px; background:var(--line); overflow:hidden}
 .bar1 .fl{height:100%; background:var(--res); border-radius:5px}
 .bar1 .v{text-align:right; font-variant-numeric:tabular-nums; color:var(--muted)}
-.bar1.top .fl{background:var(--flag)}
+.bar1.best .fl{background:var(--flag)}
 .metric .note{font-size:11px; color:var(--muted); margin-top:6px}
 .repsum{font-size:13px; line-height:1.6; border-left:4px solid var(--flag); padding:4px 0 4px 10px}
 .toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--ink); color:var(--bg);
@@ -287,8 +287,11 @@ const CATS = [
   {g:'수비', c:'--def', k:'cov', n:'커버리지', o:['맨','존','혼합','판별 불가']},
   {g:'결과', c:'--res', k:'roll', n:'QB 롤링', o:['포켓(제자리)','왼쪽','오른쪽','판별 불가']},
   {g:'결과', c:'--res', k:'ptype', n:'플레이 유형', o:['패스','핸드오프 런','기타']},
+  {g:'결과', c:'--res', k:'dqb', n:'더블 QB', o:['없음','있음','판별 불가']},
+  {g:'결과', c:'--res', k:'dqbPos', n:'더블 QB 포지션', o:['LR','SL','C','RR','해당 없음','판별 불가'], num:'dqbNo'},
   {g:'결과', c:'--res', k:'pdir', n:'패스 방향', o:['좌','중','우','해당 없음']},
   {g:'결과', c:'--res', k:'pdepth', n:'패스 깊이', o:['숏(5야드 미만)','미들(5~15야드)','딥(15야드 이상)','해당 없음']},
+  {g:'결과', c:'--res', k:'recv', n:'패스 받은 포지션', o:['LR','SL','C','RR','QB','해당 없음','판별 불가'], num:'recvNo'},
   {g:'결과', c:'--res', k:'result', n:'결과', o:['완료','미완료','인터셉트','색','터치다운','7초 초과','반칙','기타']},
 ];
 const UNK = new Set(['판별 불가','해당 없음','기타']);
@@ -426,8 +429,10 @@ function snap(){
 function pick(k, v){
   const p=cur(); if(!p) return;
   p[k] = p[k]===v ? '' : v;
-  if(k==='ptype' && p.ptype && p.ptype!=='패스'){ p.pdir='해당 없음'; p.pdepth='해당 없음'; }
-  if(k==='ptype' && p.ptype==='패스'){ if(p.pdir==='해당 없음') p.pdir=''; if(p.pdepth==='해당 없음') p.pdepth=''; }
+  if(k==='ptype' && p.ptype && p.ptype!=='패스'){ p.pdir='해당 없음'; p.pdepth='해당 없음'; p.recv='해당 없음'; p.recvNo=''; }
+  if(k==='ptype' && p.ptype==='패스'){ if(p.pdir==='해당 없음') p.pdir=''; if(p.pdepth==='해당 없음') p.pdepth=''; if(p.recv==='해당 없음') p.recv=''; }
+  if(k==='dqb' && p.dqb==='없음'){ p.dqbPos='해당 없음'; p.dqbNo=''; }
+  if(k==='dqb' && p.dqb!=='없음' && p.dqbPos==='해당 없음') p.dqbPos='';
   if(p[k]){ // advance to next empty category
     const next = CATS.findIndex((c,i)=>i>CATS.findIndex(x=>x.k===k) && !p[c.k]);
     active = next>=0 ? next : active;
@@ -445,6 +450,7 @@ function renderLabels(){
     h+=`<div class="cat${i===active?' active':''}" data-i="${i}"><div class="name">${c.n}</div><div class="chips">`;
     c.o.forEach((v,j)=>{ h+=`<button class="chip${UNK.has(v)?' unk':''}${p[c.k]===v?' on':''}" data-k="${c.k}" data-v="${esc(v)}"><span class="k">${j+1}</span>${esc(v)}</button>`; });
     h+='</div></div>';
+    if(c.num) h+=`<div class="nums" style="grid-template-columns:1fr;margin:-4px 0 6px"><label>${c.k==='recv'?'받은 선수':'더블 QB'} 번호 (선택)<input type="text" inputmode="numeric" placeholder="예: 7" data-num="${c.num}" value="${esc(p[c.num]??'')}"></label></div>`;
     if(c.k==='zone') h+=`<div class="nums" style="grid-template-columns:1fr"><label>점수차 (공격팀 기준, 지고 있으면 음수)<input type="number" data-num="score" value="${esc(p.score)}"></label></div>`;
   });
   h+=`</div><div class="nums"><label>획득 야드<input type="number" data-num="yards" value="${esc(p.yards)}"></label><span></span></div>`;
@@ -458,8 +464,9 @@ function renderLabels(){
 
 /* list */
 let rl; function renderListSoon(){ clearTimeout(rl); rl=setTimeout(renderList,250); }
+function posTag(pos,no){ if(!pos||UNK.has(pos)) return ''; return pos+(no?'#'+no:''); }
 function summary(p){
-  const bits=[p.form, p.cov && p.cov+' 수비', p.ptype && [p.ptype, p.result].filter(Boolean).join(' '), p.yards!=='' && p.yards!=null ? (p.yards>0?'+':'')+p.yards+'야드':''].filter(Boolean);
+  const bits=[p.form, p.cov && p.cov+' 수비', p.ptype && [p.ptype, p.result].filter(Boolean).join(' '), posTag(p.recv,p.recvNo) && '→'+posTag(p.recv,p.recvNo), p.dqb==='있음' && '더블QB'+(posTag(p.dqbPos,p.dqbNo)?'('+posTag(p.dqbPos,p.dqbNo)+')':''), p.yards!=='' && p.yards!=null ? (p.yards>0?'+':'')+p.yards+'야드':''].filter(Boolean);
   return bits.join(' · ') || '<small>라벨 없음</small>';
 }
 function renderList(){
@@ -487,8 +494,8 @@ function select(id, go){
 }
 
 /* export */
-const HEAD=['경기 ID','플레이 #','영상 시각(mm:ss)','공격팀','하프','다운','필드 구간','점수차(공격팀 기준)','리시버 배치','강한 쪽','센터 위치','모션','블리처 수(손 든 선수)','딥 수비 인원','커버리지','플레이 유형','패스 방향','패스 깊이','결과','획득 야드','메모','영상 링크','루트','QB 롤링'];
-function rows(){ return sorted().map((p,i)=>[S.gid, i+1, fmt(p.t), teamName(p.off), p.half, p.down, p.zone, p.score, p.form, p.strong, p.center, p.motion, p.blitz, p.deep, p.cov, p.ptype, p.pdir, p.pdepth, p.result, p.yards, p.memo, link(p), routeStr(p), p.roll].map(v=>v??'')); }
+const HEAD=['경기 ID','플레이 #','영상 시각(mm:ss)','공격팀','하프','다운','필드 구간','점수차(공격팀 기준)','리시버 배치','강한 쪽','센터 위치','모션','블리처 수(손 든 선수)','딥 수비 인원','커버리지','플레이 유형','패스 방향','패스 깊이','결과','획득 야드','메모','영상 링크','루트','QB 롤링','더블 QB','더블 QB 포지션','더블 QB 번호','패스 받은 포지션','받은 선수 번호'];
+function rows(){ return sorted().map((p,i)=>[S.gid, i+1, fmt(p.t), teamName(p.off), p.half, p.down, p.zone, p.score, p.form, p.strong, p.center, p.motion, p.blitz, p.deep, p.cov, p.ptype, p.pdir, p.pdepth, p.result, p.yards, p.memo, link(p), routeStr(p), p.roll, p.dqb, p.dqbPos, p.dqbNo, p.recv, p.recvNo].map(v=>v??'')); }
 $('copyBtn').onclick=async()=>{
   const r=rows(); if(!r.length){ toast('복사할 플레이가 없어요'); return; }
   const tsv=r.map(x=>x.map(v=>String(v).replace(/[\t\n]/g,' ')).join('\t')).join('\n');
@@ -721,7 +728,7 @@ function dist(list, key, opts){ const v=list.map(p=>p[key]).filter(x=>x && !UNK.
 function bars(d, labelMap){
   if(!d.n) return '<div class="note">아직 기록이 없어요</div>';
   const mx=Math.max(...d.rows.map(r=>r[1]));
-  return '<div class="bars">'+d.rows.map(([k,c])=>`<div class="bar1${c===mx&&c>0?' top':''}"><span>${esc(labelMap?.[k]||k)}</span><span class="tr"><span class="fl" style="width:${pct(c,d.n)}%;display:block"></span></span><span class="v">${pct(c,d.n)}% (${c})</span></div>`).join('')+'</div>';
+  return '<div class="bars">'+d.rows.map(([k,c])=>`<div class="bar1${c===mx&&c>0?' best':''}"><span>${esc(labelMap?.[k]||k)}</span><span class="tr"><span class="fl" style="width:${pct(c,d.n)}%;display:block"></span></span><span class="v">${pct(c,d.n)}% (${c})</span></div>`).join('')+'</div>';
 }
 function lead(d, labelMap){ if(!d.n) return null; const r=[...d.rows].sort((a,b)=>b[1]-a[1])[0]; return {k:labelMap?.[r[0]]||r[0], p:pct(r[1],d.n)}; }
 function repData(){
@@ -741,7 +748,12 @@ function repData(){
   const yd=pass.filter(p=>p.yards!==''&&p.yards!=null&&!isNaN(+p.yards)).map(p=>+p.yards);
   const avg=yd.length? (yd.reduce((a,b)=>a+b,0)/yd.length):null;
   const form=dist(L,'form',CATS.find(c=>c.k==='form').o);
-  return {team,L,pass,run,roll,depth,dir,outIn,tgtRows,tgtN,att,comp,yd,avg,form};
+  const recv=dist(pass,'recv',['LR','SL','C','RR','QB']);
+  const dqbL=L.filter(p=>p.dqb==='있음'), dqbKnown=L.filter(p=>p.dqb==='있음'||p.dqb==='없음');
+  const dqbPos=dist(dqbL,'dqbPos',['LR','SL','C','RR']);
+  const nos=(list,pk,nk)=>{ const m={}; list.forEach(p=>{ if(p[pk]&&!UNK.has(p[pk])&&p[nk]){ const t=p[pk]+' #'+p[nk]; m[t]=(m[t]||0)+1; } }); return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,5); };
+  const recvNos=nos(pass,'recv','recvNo'), dqbNos=nos(dqbL,'dqbPos','dqbNo');
+  return {team,L,pass,run,roll,depth,dir,outIn,tgtRows,tgtN,att,comp,yd,avg,form,recv,dqbL,dqbKnown,dqbPos,recvNos,dqbNos};
 }
 function renderReport(){
   const D=repData();
@@ -754,13 +766,15 @@ function renderReport(){
   const outside=D.dir.n? pct(D.dir.rows[0][1]+D.dir.rows[2][1],D.dir.n):null;
   const outR=D.outIn.n? pct(D.outIn.rows[0][1],D.outIn.n):null;
   const dirMap={'좌':'왼쪽','중':'가운데','우':'오른쪽'};
-  const rl=lead(D.roll), fm=lead(D.form);
+  const rl=lead(D.roll), fm=lead(D.form), rv=lead(D.recv), dp=lead(D.dqbPos);
   const sum=[
     rl && `QB는 ${rl.k==='포켓(제자리)'?'주로 포켓에 머물러요':`주로 ${rl.k}으로 롤링해요`} (${rl.p}%)`,
     short!=null && `패스의 ${short}%가 숏패스`,
     outside!=null && `패스의 ${outside}%를 바깥(좌우)으로 던져요`,
     outR!=null && `루트의 ${outR}%가 바깥으로 꺾는 루트`,
     fm && `가장 많이 쓰는 포메이션은 ${fm.k} (${fm.p}%)`,
+    rv && `패스는 주로 ${rv.k}${D.recvNos[0]&&D.recvNos[0][0].startsWith(rv.k+' ')?'('+D.recvNos[0][0].split(' ')[1]+')':''}에게 가요 (${rv.p}%)`,
+    D.dqbL.length && `더블 QB ${D.dqbL.length}회${dp?`, 던지는 선수는 주로 ${dp.k} (${dp.p}%)`:''}`,
   ].filter(Boolean);
   let h=`<p class="repsum">${esc(D.team)} 공격 ${D.L.length}플레이 (패스 ${D.pass.length} · 런 ${D.run.length})${sum.length?'<br>'+sum.map(esc).join('<br>'):''}</p><div class="repgrid">`;
   h+=`<div class="metric"><h4>QB 롤링 방향</h4><div class="q">QB가 스냅 후 어느 쪽으로 움직이나</div>${bars(D.roll)}<div class="note">표본 ${D.roll.n}플레이</div></div>`;
@@ -772,6 +786,9 @@ function renderReport(){
     <div class="bar1"><span>딥 시도</span><span class="tr"><span class="fl" style="width:${D.depth.n?pct(D.depth.rows[2][1],D.depth.n):0}%;display:block"></span></span><span class="v">${D.depth.n?pct(D.depth.rows[2][1],D.depth.n):0}%</span></div></div>
     <div class="note">획득 야드 기준이라 공이 날아간 거리(에어 야드)와는 달라요. 표본 ${D.yd.length}개</div></div>`;
   h+=`<div class="metric"><h4>주로 공이 가는 루트</h4><div class="q">패스를 받은 선수의 루트</div>${D.tgtN?bars({n:D.tgtN, rows:D.tgtRows}):'<div class="note">AI 분석에서 공 받은 선수(●)가 있는 플레이부터 집계돼요</div>'}</div>`;
+  const noList=a=>a.length?`<div class="note">자주 나온 번호: ${a.map(([t,c])=>esc(t)+' '+c+'회').join(' · ')}</div>`:'';
+  h+=`<div class="metric"><h4>패스 받은 포지션</h4><div class="q">누구에게 공이 가나</div>${bars(D.recv)}${noList(D.recvNos)}<div class="note">표본 패스 ${D.recv.n}개</div></div>`;
+  h+=`<div class="metric"><h4>더블 QB</h4><div class="q">더블 QB를 얼마나, 누가 하나</div><div class="big">${D.dqbKnown.length?pct(D.dqbL.length,D.dqbKnown.length)+'%':'—'}<small>더블 QB 비율 (${D.dqbL.length}/${D.dqbKnown.length})</small></div>${D.dqbL.length?bars(D.dqbPos):''}${noList(D.dqbNos)}</div>`;
   h+=`<div class="metric"><h4>포메이션</h4><div class="q">자주 쓰는 정렬</div>${bars(D.form)}<div class="note">표본 ${D.form.n}플레이</div></div>`;
   h+='</div>';
   $('repBody').innerHTML=h;
