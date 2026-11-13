@@ -409,7 +409,7 @@ $('rateBtn').onclick=()=>setRate((rateIdx+1)%RATES.length);
 $('snapBtn').onclick=snap;
 function setMono(on){ S.mono=!!on; $('stage').classList.toggle('mono',S.mono); $('monoBtn').classList.toggle('primary',S.mono); $('monoBtn').setAttribute('aria-pressed',S.mono); save(); }
 $('monoBtn').onclick=()=>setMono(!S.mono); setMono(S.mono);
-const link=p=>`https://youtu.be/${p.vid||S.vid}?t=${Math.floor(p.t)}`;
+function link(p){ return `https://youtu.be/${p.vid||S.vid}?t=${Math.floor(p.t)}`; }
 function snap(){
   if(!ready) return;
   P.pause(); const t=P.t();
