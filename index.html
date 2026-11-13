@@ -280,7 +280,6 @@ const CATS = [
   {g:'상황', c:'--sit', k:'zone', n:'필드 구간', o:['자진영(중간선 전)','상대진영(중간선 넘음)','노런존(골라인 5야드 안)']},
   {g:'공격', c:'--off', k:'form', n:'리시버 배치', o:['3x0 트립스','2x1','번치','스택','백필드 1명 포함','기타','판별 불가']},
   {g:'공격', c:'--off', k:'strong', n:'강한 쪽', o:['좌','우','없음','판별 불가']},
-  {g:'공격', c:'--off', k:'center', n:'센터 위치', o:['중앙','한쪽으로 치우침','판별 불가']},
   {g:'공격', c:'--off', k:'motion', n:'모션', o:['있음','없음','판별 불가']},
   {g:'수비', c:'--def', k:'blitz', n:'블리처 수(손 든 선수)', o:['0','1','2','판별 불가']},
   {g:'수비', c:'--def', k:'deep', n:'딥 수비 인원', o:['0','1','2','3','4','판별 불가']},
@@ -319,8 +318,15 @@ function esc(s){ return String(s??'').replace(/[&<>"]/g, ch=>({'&':'&amp;','<':'
 /* header */
 $('gid').value=S.gid; $('teamA').value=S.teamA; $('teamB').value=S.teamB;
 ['gid','teamA','teamB'].forEach(id=>$(id).addEventListener('input',e=>{ S[id]=e.target.value.trim(); save(); renderList(); renderLabels(); }));
-function setOff(code){ S.off=code; $('offA').classList.toggle('on',code==='A'); $('offB').classList.toggle('on',code==='B'); const p=cur(); if(p){ p.off=code; save(); renderList(); renderLabels(); } }
-$('offA').onclick=()=>setOff('A'); $('offB').onclick=()=>setOff('B'); setOff(S.off);
+function setOff(code, user){ S.off=code; $('offA').classList.toggle('on',code==='A'); $('offB').classList.toggle('on',code==='B');
+  if(!user) return;
+  const p=cur(), arr=sorted(), latest=p && arr[arr.length-1]?.id===p.id;
+  if(p && p.off!==code && (p.auto || !latest)){
+    // 방금 스냅해서 아직 안 고친 플레이 → 팀 바꾸고 다시 채움 / 예전 플레이를 골라둔 경우 → 그 플레이 팀만 수정
+    p.off=code; if(p.auto) carry(p); save(); renderList(); renderLabels();
+  } else { save(); if(p && p.off!==code) toast(`다음 스냅부터 ${teamName(code)} 공격으로 기록해요`); }
+}
+$('offA').onclick=()=>setOff('A',true); $('offB').onclick=()=>setOff('B',true); setOff(S.off||'A');
 
 /* video (YouTube IFrame Player API) */
 let player=null, ready=false, dur=0, wantPlay=false, bufT=null;
@@ -413,22 +419,42 @@ $('snapBtn').onclick=snap;
 function setMono(on){ S.mono=!!on; $('stage').classList.toggle('mono',S.mono); $('monoBtn').classList.toggle('primary',S.mono); $('monoBtn').setAttribute('aria-pressed',S.mono); save(); }
 $('monoBtn').onclick=()=>setMono(!S.mono); setMono(S.mono);
 function link(p){ return `https://youtu.be/${p.vid||S.vid}?t=${Math.floor(p.t)}`; }
+// 이전 스냅에서 이어받는 항목 (결과 그룹은 매 플레이 새로 입력)
+const CARRY=['down','zone','score','form','strong','motion','blitz','deep','cov'];
+function nextDown(prev){
+  if(prev.result==='터치다운') return '';
+  return ['1','2','3'].includes(String(prev.down)) ? String(+prev.down+1) : '';
+}
+function carry(p){
+  const prev = sorted().filter(x=>x.id!==p.id && x.t<=p.t).pop();
+  CARRY.forEach(k=>p[k]='');
+  if(!prev) return null;
+  p.half = prev.half || '';
+  if((prev.off||'A')===p.off){
+    CARRY.forEach(k=>{ if(k!=='down') p[k]=prev[k] ?? ''; });
+    p.down = nextDown(prev);
+    return 'same';
+  }
+  // 공격 전환: 다 비우고 1다운부터, 점수차는 반대 팀 기준으로 뒤집기
+  p.down='1';
+  if(prev.score!=='' && prev.score!=null && !isNaN(+prev.score)) p.score=String(-prev.score);
+  return 'switch';
+}
 function snap(){
   if(!ready) return;
   P.pause(); const t=P.t();
-  const prev = sorted().filter(p=>p.t<=t).pop();
-  const p = {id:Date.now().toString(36)+Math.random().toString(36).slice(2,6), t, vid:S.vid, off:S.off,
-    half: prev?.half || '', score: prev?.score ?? '', yards:'', memo:''};
+  const p = {id:Date.now().toString(36)+Math.random().toString(36).slice(2,6), t, vid:S.vid, off:S.off, yards:'', memo:'', auto:true};
+  const mode = carry(p);
   S.plays.push(p); S.sel=p.id;
-  active = CATS.findIndex(c=>!p[c.k]);
+  active = CATS.findIndex(c=>!p[c.k]); if(active<0) active=0;
   save(); renderList(); renderLabels();
-  toast(`플레이를 추가했어요 · ${fmt(p.t)}`);
+  toast(`플레이를 추가했어요 · ${fmt(p.t)}`+(mode==='same'?` · 이전 플레이 이어받음${p.down?' ('+p.down+'다운)':''}`:mode==='switch'?' · 공격 전환, 새로 입력':''));
 }
 
 /* labels */
 function pick(k, v){
   const p=cur(); if(!p) return;
-  p[k] = p[k]===v ? '' : v;
+  p[k] = p[k]===v ? '' : v; p.auto=false;
   if(k==='ptype' && p.ptype && p.ptype!=='패스'){ p.pdir='해당 없음'; p.pdepth='해당 없음'; p.recv='해당 없음'; p.recvNo=''; }
   if(k==='ptype' && p.ptype==='패스'){ if(p.pdir==='해당 없음') p.pdir=''; if(p.pdepth==='해당 없음') p.pdepth=''; if(p.recv==='해당 없음') p.recv=''; }
   if(k==='dqb' && p.dqb==='없음'){ p.dqbPos='해당 없음'; p.dqbNo=''; }
@@ -458,7 +484,7 @@ function renderLabels(){
   el.innerHTML=h;
   if(window.__aiReady) renderAI(el,p);
   el.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ active=+b.closest('.cat').dataset.i; pick(b.dataset.k,b.dataset.v); });
-  el.querySelectorAll('[data-num]').forEach(inp=>inp.oninput=e=>{ p[inp.dataset.num]=e.target.value; save(); renderListSoon(); });
+  el.querySelectorAll('[data-num]').forEach(inp=>inp.oninput=e=>{ p[inp.dataset.num]=e.target.value; p.auto=false; save(); renderListSoon(); });
   const a=el.querySelector('.cat.active'); if(a && document.activeElement===document.body) scrollInBox(a);
 }
 
@@ -494,8 +520,8 @@ function select(id, go){
 }
 
 /* export */
-const HEAD=['경기 ID','플레이 #','영상 시각(mm:ss)','공격팀','하프','다운','필드 구간','점수차(공격팀 기준)','리시버 배치','강한 쪽','센터 위치','모션','블리처 수(손 든 선수)','딥 수비 인원','커버리지','플레이 유형','패스 방향','패스 깊이','결과','획득 야드','메모','영상 링크','루트','QB 롤링','더블 QB','더블 QB 포지션','더블 QB 번호','패스 받은 포지션','받은 선수 번호'];
-function rows(){ return sorted().map((p,i)=>[S.gid, i+1, fmt(p.t), teamName(p.off), p.half, p.down, p.zone, p.score, p.form, p.strong, p.center, p.motion, p.blitz, p.deep, p.cov, p.ptype, p.pdir, p.pdepth, p.result, p.yards, p.memo, link(p), routeStr(p), p.roll, p.dqb, p.dqbPos, p.dqbNo, p.recv, p.recvNo].map(v=>v??'')); }
+const HEAD=['경기 ID','플레이 #','영상 시각(mm:ss)','공격팀','하프','다운','필드 구간','점수차(공격팀 기준)','리시버 배치','강한 쪽','모션','블리처 수(손 든 선수)','딥 수비 인원','커버리지','플레이 유형','패스 방향','패스 깊이','결과','획득 야드','메모','영상 링크','루트','QB 롤링','더블 QB','더블 QB 포지션','더블 QB 번호','패스 받은 포지션','받은 선수 번호'];
+function rows(){ return sorted().map((p,i)=>[S.gid, i+1, fmt(p.t), teamName(p.off), p.half, p.down, p.zone, p.score, p.form, p.strong, p.motion, p.blitz, p.deep, p.cov, p.ptype, p.pdir, p.pdepth, p.result, p.yards, p.memo, link(p), routeStr(p), p.roll, p.dqb, p.dqbPos, p.dqbNo, p.recv, p.recvNo].map(v=>v??'')); }
 $('copyBtn').onclick=async()=>{
   const r=rows(); if(!r.length){ toast('복사할 플레이가 없어요'); return; }
   const tsv=r.map(x=>x.map(v=>String(v).replace(/[\t\n]/g,' ')).join('\t')).join('\n');
@@ -557,7 +583,7 @@ document.addEventListener('keydown',e=>{
   else if(k==='s'||k==='S'||k==='ㄴ'){ snap(); }
   else if(k==='a'||k==='A'||k==='ㅁ'){ runAI(); }
   else if(k==='b'||k==='B'||k==='ㅠ'){ setMono(!S.mono); }
-  else if(k==='t'||k==='T'||k==='ㅅ'){ setOff(S.off==='A'?'B':'A'); }
+  else if(k==='t'||k==='T'||k==='ㅅ'){ setOff(S.off==='A'?'B':'A', true); }
   else if(k==='g'||k==='G'||k==='ㅎ'){ const p=cur(); if(p&&ready){ P.pause(); P.seekTo(p.t); } }
   else if(k==='ArrowUp'){ e.preventDefault(); if(cur()){ active=(active-1+CATS.length)%CATS.length; renderLabels(); } }
   else if(k==='ArrowDown'){ e.preventDefault(); if(cur()){ active=(active+1)%CATS.length; renderLabels(); } }
