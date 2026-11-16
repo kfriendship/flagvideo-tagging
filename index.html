@@ -107,7 +107,7 @@ kbd{font-family:inherit; font-size:11px; border:1px solid var(--line); border-bo
 .chip.on::before{content:""; position:absolute; left:-1px; top:-1px; bottom:-1px; width:4px; background:var(--g); border-radius:6px 0 0 6px}
 .nums{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px}
 .nums label{font-size:12px; color:var(--muted); display:grid; gap:3px}
-.nums input,.memo textarea{border:1px solid var(--line); border-radius:6px; background:var(--sunk); padding:6px 8px; width:100%}
+.nums select,.nums input,.memo textarea{border:1px solid var(--line); border-radius:6px; background:var(--sunk); padding:6px 8px; width:100%}
 .memo{margin-top:8px}
 .memo label{font-size:12px; color:var(--muted); display:grid; gap:3px}
 .memo textarea{min-height:44px; resize:vertical}
@@ -279,6 +279,7 @@ const CATS = [
   {g:'상황', c:'--sit', k:'down', n:'다운', o:['1','2','3','4','PAT 1점(5야드)','PAT 2점(10야드)']},
   {g:'상황', c:'--sit', k:'zone', n:'필드 구간', o:['자진영(중간선 전)','상대진영(중간선 넘음)','노런존(골라인 5야드 안)']},
   {g:'공격', c:'--off', k:'form', n:'리시버 배치', o:['3x0 트립스','2x1','번치','스택','백필드 1명 포함','기타','판별 불가']},
+  {g:'공격', c:'--off', k:'csnap', n:'센터 스냅 (QB 위치)', o:['언더센터','샷건(건)','판별 불가']},
   {g:'공격', c:'--off', k:'strong', n:'강한 쪽', o:['좌','우','없음','판별 불가']},
   {g:'공격', c:'--off', k:'motion', n:'모션', o:['있음','없음','판별 불가']},
   {g:'수비', c:'--def', k:'blitz', n:'블리처 수(손 든 선수)', o:['0','1','2','판별 불가']},
@@ -420,7 +421,7 @@ function setMono(on){ S.mono=!!on; $('stage').classList.toggle('mono',S.mono); $
 $('monoBtn').onclick=()=>setMono(!S.mono); setMono(S.mono);
 function link(p){ return `https://youtu.be/${p.vid||S.vid}?t=${Math.floor(p.t)}`; }
 // 이전 스냅에서 이어받는 항목 (결과 그룹은 매 플레이 새로 입력)
-const CARRY=['down','zone','score','form','strong','motion','blitz','deep','cov'];
+const CARRY=['down','zone','score','form','csnap','strong','motion','blitz','deep','cov'];
 function nextDown(prev){
   if(prev.result==='터치다운') return '';
   return ['1','2','3'].includes(String(prev.down)) ? String(+prev.down+1) : '';
@@ -481,12 +482,40 @@ function renderLabels(){
   });
   h+=`</div><div class="nums"><label>획득 야드<input type="number" data-num="yards" value="${esc(p.yards)}"></label><span></span></div>`;
   h+=`<div class="memo"><label>메모<textarea data-num="memo">${esc(p.memo)}</textarea></label></div>`;
+  h+=prEditor(p);
   el.innerHTML=h;
   if(window.__aiReady) renderAI(el,p);
   el.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{ active=+b.closest('.cat').dataset.i; pick(b.dataset.k,b.dataset.v); });
+  el.querySelectorAll('[data-pr]').forEach(sel=>sel.onchange=()=>{ p.pr=p.pr||{}; p.pr[sel.dataset.pr]=sel.value; p.auto=false; save(); const sv=el.querySelector('#prsvg'); if(sv) sv.outerHTML=prSvg(p); renderListSoon(); });
   el.querySelectorAll('[data-num]').forEach(inp=>inp.oninput=e=>{ p[inp.dataset.num]=e.target.value; p.auto=false; save(); renderListSoon(); });
   const a=el.querySelector('.cat.active'); if(a && document.activeElement===document.body) scrollInBox(a);
 }
+
+/* 리시버 루트 (포지션별) + 미니 필드 */
+const PRPOS=['LR','SL','C','RR'], PRCOL={LR:'#2F7FE0',SL:'#E0383E',C:'#3A3F3C',RR:'#7B4DE0',QB:'#1E9A5E'};
+const PRROUTES=['고','슬랜트','아웃','인','컬','힛치','코너','포스트','휠','플랫','드래그','스크린','컴백','블록/보호'];
+const PRTPL={'고':[[0,14]],'슬랜트':[[0,1.5],[-4,6]],'아웃':[[0,5],[3.5,5]],'인':[[0,6],[-6,6]],'컬':[[0,6],[-.6,5]],'힛치':[[0,4.5],[.3,3.6]],'코너':[[0,7],[3.5,12]],'포스트':[[0,7],[-3.5,13]],'휠':[[2.5,1],[4.5,4],[4.5,12]],'플랫':[[1.5,.8],[5,1.5]],'드래그':[[0,1.5],[-9,2.5]],'스크린':[[.6,-1],[1.4,-1.6]],'컴백':[[0,10],[1.5,8]],'블록/보호':[[0,.7]]};
+function prLayout(p){ const s=p.strong==='좌'?-1:1, sw=s>0?'RR':'LR', ww=s>0?'LR':'RR', L={C:[0,0],QB:[0,p.csnap==='언더센터'?-1.2:-4.2]};
+  if(p.form==='번치'){ L[sw]=[s*6,0]; L.SL=[s*4.6,-1.3]; L[ww]=[s*7.4,-1.3]; }
+  else if(p.form==='백필드 1명 포함'){ L.LR=[-10,0]; L.RR=[10,0]; L.SL=[s*2.2,-4.2]; }
+  else if(p.form==='3x0 트립스'){ L[sw]=[s*10,0]; L.SL=[s*6.6,-.6]; L[ww]=[s*3.4,-.6]; }
+  else if(p.form==='스택'){ L[sw]=[s*9,0]; L.SL=[s*9,-1.7]; L[ww]=[-s*10,0]; }
+  else { L.LR=[-10,0]; L.RR=[10,0]; L.SL=[s*5,-.6]; }
+  return L; }
+function prSvg(p){ const W=300,H=220,CX=150,LOS=160,S=9; const X=x=>CX+x*S, Y=y=>LOS-y*S, L=prLayout(p), R=p.pr||{};
+  let g=`<rect width="${W}" height="${H}" fill="var(--sunk)"/>`;
+  for(let yd=-5;yd<=15;yd+=5){ const y=Y(yd); g+=`<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)" ${yd===0?'stroke-dasharray="5 4"':''}/>`; if(yd>0) g+=`<text x="6" y="${y-3}" font-size="9" fill="var(--muted)">+${yd}</text>`; }
+  PRPOS.forEach(k=>{ const t=PRTPL[R[k]]; if(!t) return; const st=L[k], out=k==='C'?(p.strong==='좌'?-1:1):(st[0]>0?1:-1);
+    const pts=[st,...t.map(([dx,dy])=>[Math.max(-15,Math.min(15,st[0]+dx*out)),st[1]+dy])], col=PRCOL[k];
+    g+=`<path d="M${pts.map(q=>X(q[0])+' '+Y(q[1])).join('L')}" fill="none" stroke="${col}" stroke-width="2.4" stroke-linejoin="round"/>`;
+    const a=pts[pts.length-2], b=pts[pts.length-1], an=Math.atan2(Y(b[1])-Y(a[1]),X(b[0])-X(a[0])), x2=X(b[0]), y2=Y(b[1]);
+    g+=`<path d="M${x2} ${y2}L${x2-7*Math.cos(an-.45)} ${y2-7*Math.sin(an-.45)}L${x2-7*Math.cos(an+.45)} ${y2-7*Math.sin(an+.45)}Z" fill="${col}"/>`; });
+  [...PRPOS,'QB'].forEach(k=>{ const [x,y]=L[k], px=X(x), py=Y(y), col=PRCOL[k], txt=`<text x="${px}" y="${py+3}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#fff">${k}</text>`;
+    g+= k==='C' ? `<rect x="${px-8}" y="${py-8}" width="16" height="16" rx="3" fill="${col}"/>${txt}` : `<circle cx="${px}" cy="${py}" r="8.5" fill="${col}"/>${txt}`; });
+  return `<svg id="prsvg" viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;border-radius:8px;margin-top:6px" role="img" aria-label="리시버 루트 미리보기">${g}</svg>`; }
+function prEditor(p){ const R=p.pr||{};
+  return `<div class="group" style="--g:var(--off)"><h3>리시버 루트 <small style="font-weight:400;color:var(--muted)">영상 보면서 고르면 아래 그림에 바로 그려져요</small></h3>
+    <div class="nums" style="grid-template-columns:1fr 1fr">${PRPOS.map(k=>`<label><b style="color:${PRCOL[k]}">${k}</b><select data-pr="${k}"><option value="">모름</option>${PRROUTES.map(v=>`<option${R[k]===v?' selected':''}>${v}</option>`).join('')}</select></label>`).join('')}</div>${prSvg(p)}</div>`; }
 
 /* list */
 let rl; function renderListSoon(){ clearTimeout(rl); rl=setTimeout(renderList,250); }
@@ -520,8 +549,8 @@ function select(id, go){
 }
 
 /* export */
-const HEAD=['경기 ID','플레이 #','영상 시각(mm:ss)','공격팀','하프','다운','필드 구간','점수차(공격팀 기준)','리시버 배치','강한 쪽','모션','블리처 수(손 든 선수)','딥 수비 인원','커버리지','플레이 유형','패스 방향','패스 깊이','결과','획득 야드','메모','영상 링크','루트','QB 롤링','더블 QB','더블 QB 포지션','더블 QB 번호','패스 받은 포지션','받은 선수 번호'];
-function rows(){ return sorted().map((p,i)=>[S.gid, i+1, fmt(p.t), teamName(p.off), p.half, p.down, p.zone, p.score, p.form, p.strong, p.motion, p.blitz, p.deep, p.cov, p.ptype, p.pdir, p.pdepth, p.result, p.yards, p.memo, link(p), routeStr(p), p.roll, p.dqb, p.dqbPos, p.dqbNo, p.recv, p.recvNo].map(v=>v??'')); }
+const HEAD=['경기 ID','플레이 #','영상 시각(mm:ss)','공격팀','하프','다운','필드 구간','점수차(공격팀 기준)','리시버 배치','강한 쪽','모션','블리처 수(손 든 선수)','딥 수비 인원','커버리지','플레이 유형','패스 방향','패스 깊이','결과','획득 야드','메모','영상 링크','루트','QB 롤링','더블 QB','더블 QB 포지션','더블 QB 번호','패스 받은 포지션','받은 선수 번호','센터 스냅','LR 루트','SL 루트','C 루트','RR 루트'];
+function rows(){ return sorted().map((p,i)=>[S.gid, i+1, fmt(p.t), teamName(p.off), p.half, p.down, p.zone, p.score, p.form, p.strong, p.motion, p.blitz, p.deep, p.cov, p.ptype, p.pdir, p.pdepth, p.result, p.yards, p.memo, link(p), routeStr(p), p.roll, p.dqb, p.dqbPos, p.dqbNo, p.recv, p.recvNo, p.csnap, p.pr?.LR, p.pr?.SL, p.pr?.C, p.pr?.RR].map(v=>v??'')); }
 $('copyBtn').onclick=async()=>{
   const r=rows(); if(!r.length){ toast('복사할 플레이가 없어요'); return; }
   const tsv=r.map(x=>x.map(v=>String(v).replace(/[\t\n]/g,' ')).join('\t')).join('\n');
@@ -570,7 +599,7 @@ $('resetBtn').onclick=()=>{
 document.addEventListener('keydown',e=>{
   if($('report').classList.contains('open')||$('settings').classList.contains('open')) return;
   const tag=(e.target.tagName||'').toLowerCase();
-  if(tag==='input'||tag==='textarea'){ if(e.key==='Escape') e.target.blur(); return; }
+  if(tag==='input'||tag==='textarea'||tag==='select'){ if(e.key==='Escape') e.target.blur(); return; }
   if(e.metaKey||e.ctrlKey||e.altKey) return;
   const k=e.key;
   if(k===' '){ e.preventDefault(); togglePlay(); }
